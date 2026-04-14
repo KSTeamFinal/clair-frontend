@@ -32,7 +32,8 @@ export function ResultDashboard() {
   const [showQuestions, setShowQuestions] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
 
-  const [messages, setMessages] = useState<Message[]>([
+  // 왼쪽 분석 전용 메시지
+  const [analysisMessages] = useState<Message[]>([
     { role: 'bot', text: '분석이 완료되었어요.', type: 'text' },
     { role: 'bot', text: '', type: 'score' },
     {
@@ -42,6 +43,21 @@ export function ResultDashboard() {
     },
     { role: 'bot', text: '', type: 'summary' },
     { role: 'bot', text: '', type: 'risks' },
+    {
+      role: 'bot',
+      text: '계약서에 대해 궁금한 점이 있으면 편하게 물어보세요.',
+      type: 'text',
+    },
+  ]);
+
+  // 오른쪽 채팅 전용 메시지
+  const [chatMessages, setChatMessages] = useState<Message[]>([
+    { role: 'bot', text: '분석이 완료되었어요.', type: 'text' },
+    {
+      role: 'bot',
+      text: '계약서를 분석한 결과, 확인이 필요한 조항이 일부 발견되었습니다. 계약 안정도는 72점입니다.',
+      type: 'text',
+    },
     {
       role: 'bot',
       text: '계약서에 대해 궁금한 점이 있으면 편하게 물어보세요.',
@@ -60,49 +76,43 @@ export function ResultDashboard() {
   const scoreLabel =
     safetyScore >= 80 ? '안정적' : safetyScore >= 60 ? '확인 필요' : '주의 필요';
 
+  const getBotResponse = (messageToSend: string) => {
+    if (messageToSend.includes('위험') || messageToSend.includes('문제')) {
+      return '주요 위험 요소는 초과 근무 수당 규정 미비, 경업금지 조항 범위 과다, 해지 사유 명확성 부족입니다. 특히 초과 근무 수당 관련 조항은 꼭 확인해보시는 것이 좋아요.';
+    }
+
+    if (messageToSend.includes('초과') || messageToSend.includes('수당')) {
+      return '초과 근무 수당 규정이 계약서에 명확하게 적혀 있지 않습니다. 연장, 야간, 휴일 근무에 대한 보상 기준을 회사와 별도로 확인하시는 것이 좋습니다.';
+    }
+
+    if (messageToSend.includes('해지') || messageToSend.includes('종료')) {
+      return '계약 만료 30일 전 갱신 의사 통보가 필요하고, 중도 해지 시 1개월 전 사전 통보가 필요한 것으로 보입니다. 다만 해지 사유가 충분히 구체적이지 않아 분쟁 가능성이 있습니다.';
+    }
+
+    if (messageToSend.includes('급여') || messageToSend.includes('연봉')) {
+      return '월 급여는 세전 300만원으로 확인됩니다. 급여 지급일, 4대 보험 포함 여부, 퇴직금 기준도 함께 확인해보시면 좋아요.';
+    }
+
+    if (messageToSend.includes('기간') || messageToSend.includes('언제')) {
+      return '계약 기간은 2024년 4월부터 2025년 3월까지 총 12개월로 보입니다.';
+    }
+
+    return '계약서와 관련해 궁금한 점을 더 구체적으로 물어보시면 자세히 설명해드릴게요.';
+  };
+
   const handleSendMessage = (preset?: string) => {
     const messageToSend = preset ?? inputMessage;
     if (!messageToSend.trim()) return;
 
-    setMessages((prev) => [
+    setChatMessages((prev) => [
       ...prev,
       { role: 'user', text: messageToSend, type: 'text' },
     ]);
 
     setTimeout(() => {
-      let botResponse =
-        '계약서와 관련해 궁금한 점을 더 구체적으로 물어보시면 자세히 설명해드릴게요.';
+      const botResponse = getBotResponse(messageToSend);
 
-      if (messageToSend.includes('위험') || messageToSend.includes('문제')) {
-        botResponse =
-          '주요 위험 요소는 초과 근무 수당 규정 미비, 경업금지 조항 범위 과다, 해지 사유 명확성 부족입니다. 특히 초과 근무 수당 관련 조항은 꼭 확인해보시는 것이 좋아요.';
-      } else if (
-        messageToSend.includes('초과') ||
-        messageToSend.includes('수당')
-      ) {
-        botResponse =
-          '초과 근무 수당 규정이 계약서에 명확하게 적혀 있지 않습니다. 연장, 야간, 휴일 근무에 대한 보상 기준을 회사와 별도로 확인하시는 것이 좋습니다.';
-      } else if (
-        messageToSend.includes('해지') ||
-        messageToSend.includes('종료')
-      ) {
-        botResponse =
-          '계약 만료 30일 전 갱신 의사 통보가 필요하고, 중도 해지 시 1개월 전 사전 통보가 필요한 것으로 보입니다. 다만 해지 사유가 충분히 구체적이지 않아 분쟁 가능성이 있습니다.';
-      } else if (
-        messageToSend.includes('급여') ||
-        messageToSend.includes('연봉')
-      ) {
-        botResponse =
-          '월 급여는 세전 300만원으로 확인됩니다. 급여 지급일, 4대 보험 포함 여부, 퇴직금 기준도 함께 확인해보시면 좋아요.';
-      } else if (
-        messageToSend.includes('기간') ||
-        messageToSend.includes('언제')
-      ) {
-        botResponse =
-          '계약 기간은 2024년 4월부터 2025년 3월까지 총 12개월로 보입니다.';
-      }
-
-      setMessages((prev) => [
+      setChatMessages((prev) => [
         ...prev,
         { role: 'bot', text: botResponse, type: 'text' },
       ]);
@@ -132,10 +142,7 @@ export function ResultDashboard() {
     const dashOffset = circumference * (1 - score / 100);
 
     return (
-      <div
-        className="shrink-0"
-        style={{ width: size, height: size }}
-      >
+      <div className="shrink-0" style={{ width: size, height: size }}>
         <svg
           width={size}
           height={size}
@@ -143,7 +150,6 @@ export function ResultDashboard() {
           className="block"
           aria-label={`계약 안정도 ${score}점`}
         >
-          {/* Background ring */}
           <circle
             cx={center}
             cy={center}
@@ -153,7 +159,6 @@ export function ResultDashboard() {
             strokeWidth={strokeWidth}
           />
 
-          {/* Progress ring */}
           <circle
             cx={center}
             cy={center}
@@ -167,7 +172,6 @@ export function ResultDashboard() {
             transform={`rotate(-90 ${center} ${center})`}
           />
 
-          {/* Number */}
           <text
             x={center}
             y={center}
@@ -182,7 +186,6 @@ export function ResultDashboard() {
             {score}
           </text>
 
-          {/* Unit */}
           <text
             x={center}
             y={center}
@@ -594,7 +597,7 @@ export function ResultDashboard() {
               <div className="grid min-h-[720px] lg:grid-cols-[1.05fr_0.95fr]">
                 <div className="p-4 sm:p-6 lg:border-r lg:border-slate-100/80">
                   <div className="space-y-4">
-                    {messages.map((message, index) => (
+                    {analysisMessages.map((message, index) => (
                       <div key={index}>
                         {message.type === 'text' && (
                           <div
@@ -754,7 +757,7 @@ export function ResultDashboard() {
                       </div>
                     ))}
 
-                    {messages.length <= 6 && (
+                    {chatMessages.length <= 3 && (
                       <div className="pt-2">
                         <p className="mb-3 text-[14px] font-semibold text-slate-800">
                           추천 질문
@@ -778,46 +781,44 @@ export function ResultDashboard() {
 
                 <div className="hidden min-h-[720px] flex-col bg-white/30 lg:flex">
                   <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
-                    {messages
-                      .filter((message) => message.type === 'text')
-                      .map((message, index) => (
+                    {chatMessages.map((message, index) => (
+                      <div
+                        key={index}
+                        className={`flex gap-3 ${
+                          message.role === 'user'
+                            ? 'justify-end'
+                            : 'justify-start'
+                        }`}
+                      >
+                        {message.role === 'bot' && (
+                          <div
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
+                            style={{
+                              background:
+                                'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                            }}
+                          >
+                            <Bot size={16} />
+                          </div>
+                        )}
+
                         <div
-                          key={index}
-                          className={`flex gap-3 ${
-                            message.role === 'user'
-                              ? 'justify-end'
-                              : 'justify-start'
+                          className={`max-w-[82%] whitespace-pre-line rounded-[20px] px-4 py-3 text-[14px] leading-6 sm:max-w-[75%] sm:text-[15px] ${
+                            message.role === 'bot'
+                              ? 'rounded-tl-[8px] border border-white/90 bg-white text-slate-800 shadow-sm'
+                              : 'rounded-tr-[8px] bg-[#6C80DD] text-white shadow-sm'
                           }`}
                         >
-                          {message.role === 'bot' && (
-                            <div
-                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                              style={{
-                                background:
-                                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                              }}
-                            >
-                              <Bot size={16} />
-                            </div>
-                          )}
-
-                          <div
-                            className={`max-w-[82%] whitespace-pre-line rounded-[20px] px-4 py-3 text-[14px] leading-6 sm:max-w-[75%] sm:text-[15px] ${
-                              message.role === 'bot'
-                                ? 'rounded-tl-[8px] border border-white/90 bg-white text-slate-800 shadow-sm'
-                                : 'rounded-tr-[8px] bg-[#6C80DD] text-white shadow-sm'
-                            }`}
-                          >
-                            {message.text}
-                          </div>
-
-                          {message.role === 'user' && (
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-slate-800 text-white">
-                              <UserIcon size={16} />
-                            </div>
-                          )}
+                          {message.text}
                         </div>
-                      ))}
+
+                        {message.role === 'user' && (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-slate-800 text-white">
+                            <UserIcon size={16} />
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
 
                   <div className="border-t border-slate-100 bg-white/70 p-3 sm:p-4">
