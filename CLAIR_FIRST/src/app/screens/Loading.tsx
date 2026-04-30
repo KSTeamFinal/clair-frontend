@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bot, Check, Loader2 } from 'lucide-react';
+import client from '../../api/client';
 
 type Message = {
   role: 'bot';

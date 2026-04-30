@@ -1,20 +1,75 @@
 // Login.tsx
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
+// 점 두 개(..)가 두 번 필요합니다!
+import client from '../../api/client';
 
 export function Login() {
   const navigate = useNavigate();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoginErrorOpen, setIsLoginErrorOpen] = useState(false);
+  const [isFindPasswordOpen, setIsFindPasswordOpen] = useState(false);
+  const [findPasswordEmail, setFindPasswordEmail] = useState('');
 
   const handleBack = () => {
     navigate('/');
   };
 
-  const handleLogin = () => {
-    navigate('/home');
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      setIsLoginErrorOpen(true);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      const response = await fetch('https://ngoc-wiggliest-brian.ngrok-free.dev/api/v1/auth/login/json', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      if (!response.ok) {
+        setIsLoginErrorOpen(true);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.accessToken) {
+        localStorage.setItem('accessToken', data.accessToken);
+      }
+
+      navigate('/home');
+    } catch (error) {
+      console.error(error);
+      setIsLoginErrorOpen(true);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSignUp = () => {
     navigate('/signup');
+  };
+
+  const handleFindPasswordSubmit = () => {
+    if (!findPasswordEmail.trim()) return;
+
+    alert('비밀번호 재설정 링크가 이메일로 전송되었습니다.');
+    setFindPasswordEmail('');
+    setIsFindPasswordOpen(false);
   };
 
   return (
@@ -77,6 +132,8 @@ export function Login() {
                   <input
                     type="email"
                     placeholder="example@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="h-[52px] w-full rounded-[16px] border border-slate-200/80 bg-white/88 px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] sm:h-[56px] sm:rounded-[18px] sm:text-[16px]"
                   />
                 </div>
@@ -88,6 +145,13 @@ export function Login() {
                   <input
                     type="password"
                     placeholder="비밀번호를 입력하세요"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleLogin();
+                      }
+                    }}
                     className="h-[52px] w-full rounded-[16px] border border-slate-200/80 bg-white/88 px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] sm:h-[56px] sm:rounded-[18px] sm:text-[16px]"
                   />
                 </div>
@@ -103,6 +167,7 @@ export function Login() {
 
                   <button
                     type="button"
+                    onClick={() => setIsFindPasswordOpen(true)}
                     className="text-[14px] font-medium text-slate-500 transition-colors hover:text-slate-800 sm:text-[15px]"
                   >
                     비밀번호 찾기
@@ -112,14 +177,15 @@ export function Login() {
                 <button
                   type="button"
                   onClick={handleLogin}
-                  className="mt-6 h-[54px] w-full rounded-[18px] text-[16px] font-semibold text-white transition-all hover:-translate-y-0.5 sm:mt-7 sm:h-[58px] sm:rounded-[20px] sm:text-[17px]"
+                  disabled={isLoading}
+                  className="mt-6 h-[54px] w-full rounded-[18px] text-[16px] font-semibold text-white transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 sm:mt-7 sm:h-[58px] sm:rounded-[20px] sm:text-[17px]"
                   style={{
                     background:
                       'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
                     boxShadow: '0 18px 38px rgba(102,122,242,0.24)',
                   }}
                 >
-                  로그인
+                  {isLoading ? '로그인 중...' : '로그인'}
                 </button>
 
                 <div className="mt-6 flex items-center gap-4 sm:mt-7">
@@ -175,6 +241,106 @@ export function Login() {
           </section>
         </main>
       </div>
+
+      {isLoginErrorOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 px-5 backdrop-blur-sm">
+          <div className="w-full max-w-[360px] rounded-[28px] border border-white/90 bg-white/95 px-6 py-7 text-center shadow-[0_24px_70px_rgba(95,117,177,0.24)]">
+            <button
+              type="button"
+              onClick={() => setIsLoginErrorOpen(false)}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              aria-label="닫기"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="mx-auto mt-1 flex h-13 w-13 items-center justify-center rounded-full bg-[#EEF3FF] text-[24px] font-bold text-[#667AF2]">
+              !
+            </div>
+
+            <h2 className="mt-5 text-[21px] font-bold tracking-[-0.03em] text-slate-900">
+              로그인에 실패했어요
+            </h2>
+
+            <p className="mt-2 text-[14px] leading-6 text-slate-500">
+              이메일 또는 비밀번호를 다시 확인해주세요.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setIsLoginErrorOpen(false)}
+              className="mt-6 h-12 w-full rounded-[16px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5"
+              style={{
+                background:
+                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                boxShadow: '0 14px 30px rgba(102,122,242,0.24)',
+              }}
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isFindPasswordOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 px-5 backdrop-blur-sm">
+          <div className="w-full max-w-[390px] rounded-[28px] border border-white/90 bg-white/95 px-6 py-7 shadow-[0_24px_70px_rgba(95,117,177,0.24)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[22px] font-bold tracking-[-0.04em] text-slate-900">
+                  비밀번호 찾기
+                </h2>
+                <p className="mt-2 text-[14px] leading-6 text-slate-500">
+                  가입한 이메일을 입력하면 비밀번호 재설정 링크를 보내드릴게요.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsFindPasswordOpen(false)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                aria-label="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-6">
+              <label className="mb-3 block text-left text-[14px] font-semibold text-slate-800">
+                이메일
+              </label>
+              <input
+                type="email"
+                placeholder="example@email.com"
+                value={findPasswordEmail}
+                onChange={(e) => setFindPasswordEmail(e.target.value)}
+                className="h-[52px] w-full rounded-[16px] border border-slate-200/80 bg-[#EEF3FF] px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8]"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleFindPasswordSubmit}
+              className="mt-6 h-12 w-full rounded-[16px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5"
+              style={{
+                background:
+                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                boxShadow: '0 14px 30px rgba(102,122,242,0.24)',
+              }}
+            >
+              재설정 링크 보내기
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsFindPasswordOpen(false)}
+              className="mt-3 h-11 w-full rounded-[16px] text-[14px] font-semibold text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Bell, Sparkles, ChevronDown } from 'lucide-react';
+import client from '../../api/client';
 
 type NotificationItem = {
   id: number;

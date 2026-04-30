@@ -1,20 +1,81 @@
 // SignUp.tsx
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
+import client from '../../api/client';
 
 export function SignUp() {
   const navigate = useNavigate();
+
+  const [email, setEmail] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordCheck, setPasswordCheck] = useState('');
+  const [isTermsChecked, setIsTermsChecked] = useState(false);
+  const [isMarketingChecked, setIsMarketingChecked] = useState(false);
+
+  const [isSignUpSuccessOpen, setIsSignUpSuccessOpen] = useState(false);
+  const [isSignUpErrorOpen, setIsSignUpErrorOpen] = useState(false);
+  const [isTermsRequiredOpen, setIsTermsRequiredOpen] = useState(false);
 
   const handleBack = () => {
     navigate('/login');
   };
 
-  const handleSignUp = () => {
+  const handleLogin = () => {
     navigate('/login');
   };
 
-  const handleLogin = () => {
-    navigate('/login');
+  const handleSignUp = async () => {
+    if (!isTermsChecked) {
+      setIsTermsRequiredOpen(true);
+      return;
+    }
+
+    if (
+      !email.trim() ||
+      !nickname.trim() ||
+      !password.trim() ||
+      !passwordCheck.trim() ||
+      password !== passwordCheck
+    ) {
+      setIsSignUpErrorOpen(true);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        'https://ngoc-wiggliest-brian.ngrok-free.dev/api/v1/auth/signup',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            nickname: nickname.trim(),
+            password,
+            password_confirm: passwordCheck,
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => null);
+
+      console.log('회원가입 상태:', response.status);
+      console.log('회원가입 응답:', data);
+
+      if (!response.ok) {
+        setIsSignUpErrorOpen(true);
+        return;
+      }
+
+      setIsSignUpSuccessOpen(true);
+    } catch (error) {
+      console.error(error);
+      setIsSignUpErrorOpen(true);
+    }
   };
 
   return (
@@ -77,6 +138,8 @@ export function SignUp() {
                   <input
                     type="email"
                     placeholder="example@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="h-[52px] w-full rounded-[16px] border border-slate-200/80 bg-white/88 px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] sm:h-[56px] sm:rounded-[18px] sm:text-[16px]"
                   />
                 </div>
@@ -88,6 +151,8 @@ export function SignUp() {
                   <input
                     type="text"
                     placeholder="사용할 닉네임을 입력하세요"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
                     className="h-[52px] w-full rounded-[16px] border border-slate-200/80 bg-white/88 px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] sm:h-[56px] sm:rounded-[18px] sm:text-[16px]"
                   />
                 </div>
@@ -99,6 +164,8 @@ export function SignUp() {
                   <input
                     type="password"
                     placeholder="8자 이상 입력하세요"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="h-[52px] w-full rounded-[16px] border border-slate-200/80 bg-white/88 px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] sm:h-[56px] sm:rounded-[18px] sm:text-[16px]"
                   />
                 </div>
@@ -110,6 +177,8 @@ export function SignUp() {
                   <input
                     type="password"
                     placeholder="비밀번호를 다시 입력하세요"
+                    value={passwordCheck}
+                    onChange={(e) => setPasswordCheck(e.target.value)}
                     className="h-[52px] w-full rounded-[16px] border border-slate-200/80 bg-white/88 px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] sm:h-[56px] sm:rounded-[18px] sm:text-[16px]"
                   />
                 </div>
@@ -118,6 +187,8 @@ export function SignUp() {
                   <label className="inline-flex items-start gap-3 text-[14px] leading-6 text-slate-600 sm:text-[15px]">
                     <input
                       type="checkbox"
+                      checked={isTermsChecked}
+                      onChange={(e) => setIsTermsChecked(e.target.checked)}
                       className="mt-1 h-4 w-4 rounded border-slate-300 accent-[#6C80DD]"
                     />
                     <span>서비스 이용약관 및 개인정보 처리방침에 동의합니다</span>
@@ -126,6 +197,8 @@ export function SignUp() {
                   <label className="inline-flex items-start gap-3 text-[14px] leading-6 text-slate-600 sm:text-[15px]">
                     <input
                       type="checkbox"
+                      checked={isMarketingChecked}
+                      onChange={(e) => setIsMarketingChecked(e.target.checked)}
                       className="mt-1 h-4 w-4 rounded border-slate-300 accent-[#6C80DD]"
                     />
                     <span>마케팅 정보 수신에 동의합니다 (선택)</span>
@@ -198,6 +271,126 @@ export function SignUp() {
           </section>
         </main>
       </div>
+
+      {isSignUpSuccessOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 px-5 backdrop-blur-sm">
+          <div className="w-full max-w-[360px] rounded-[28px] border border-white/90 bg-white/95 px-6 py-7 text-center shadow-[0_24px_70px_rgba(95,117,177,0.24)]">
+            <button
+              type="button"
+              onClick={() => setIsSignUpSuccessOpen(false)}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              aria-label="닫기"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="mx-auto mt-1 flex h-13 w-13 items-center justify-center rounded-full bg-[#EEF3FF] text-[22px] font-bold text-[#667AF2]">
+              ✓
+            </div>
+
+            <h2 className="mt-5 text-[21px] font-bold tracking-[-0.03em] text-slate-900">
+              회원가입이 완료되었어요
+            </h2>
+
+            <p className="mt-2 text-[14px] leading-6 text-slate-500">
+              이제 로그인해서 CLAIR를 시작해보세요.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="mt-6 h-12 w-full rounded-[16px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5"
+              style={{
+                background:
+                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                boxShadow: '0 14px 30px rgba(102,122,242,0.24)',
+              }}
+            >
+              로그인 하러가기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isSignUpErrorOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 px-5 backdrop-blur-sm">
+          <div className="w-full max-w-[360px] rounded-[28px] border border-white/90 bg-white/95 px-6 py-7 text-center shadow-[0_24px_70px_rgba(95,117,177,0.24)]">
+            <button
+              type="button"
+              onClick={() => setIsSignUpErrorOpen(false)}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              aria-label="닫기"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="mx-auto mt-1 flex h-13 w-13 items-center justify-center rounded-full bg-[#EEF3FF] text-[24px] font-bold text-[#667AF2]">
+              !
+            </div>
+
+            <h2 className="mt-5 text-[21px] font-bold tracking-[-0.03em] text-slate-900">
+              회원가입에 실패했어요
+            </h2>
+
+            <p className="mt-2 text-[14px] leading-6 text-slate-500">
+              입력 정보를 다시 확인하거나 이미 사용 중인 이메일인지 확인해주세요.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setIsSignUpErrorOpen(false)}
+              className="mt-6 h-12 w-full rounded-[16px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5"
+              style={{
+                background:
+                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                boxShadow: '0 14px 30px rgba(102,122,242,0.24)',
+              }}
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isTermsRequiredOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 px-5 backdrop-blur-sm">
+          <div className="w-full max-w-[360px] rounded-[28px] border border-white/90 bg-white/95 px-6 py-7 text-center shadow-[0_24px_70px_rgba(95,117,177,0.24)]">
+            <button
+              type="button"
+              onClick={() => setIsTermsRequiredOpen(false)}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              aria-label="닫기"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="mx-auto mt-1 flex h-13 w-13 items-center justify-center rounded-full bg-[#EEF3FF] text-[24px] font-bold text-[#667AF2]">
+              !
+            </div>
+
+            <h2 className="mt-5 text-[21px] font-bold tracking-[-0.03em] text-slate-900">
+              약관 동의가 필요해요
+            </h2>
+
+            <p className="mt-2 text-[14px] leading-6 text-slate-500">
+              서비스 이용약관 및 개인정보 처리방침에 동의해주세요.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setIsTermsRequiredOpen(false)}
+              className="mt-6 h-12 w-full rounded-[16px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5"
+              style={{
+                background:
+                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                boxShadow: '0 14px 30px rgba(102,122,242,0.24)',
+              }}
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
