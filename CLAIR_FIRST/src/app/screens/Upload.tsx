@@ -1,6 +1,7 @@
 // Upload.tsx
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import client from '../../api/client';
 import {
   ArrowLeft,
   Upload as UploadIcon,
@@ -11,6 +12,7 @@ import {
   Bot,
   User as UserIcon,
   Sparkles,
+  X,
 } from 'lucide-react';
 
 type Message = {
@@ -20,8 +22,15 @@ type Message = {
 
 export function Upload() {
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [selectedTab, setSelectedTab] = useState<'pdf' | 'image' | 'text'>('pdf');
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const [inputMessage, setInputMessage] = useState('');
+
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'bot',
@@ -32,19 +41,76 @@ export function Upload() {
       text: '분석할 계약서를 업로드해주세요. PDF, 이미지, 또는 텍스트 형태로 업로드할 수 있어요.',
     },
   ]);
-  const [inputMessage, setInputMessage] = useState('');
 
   const handleBack = () => {
     navigate('/home');
   };
 
-  const handleFileUpload = () => {
-    const fileName =
-      selectedTab === 'text'
-        ? '텍스트 계약서'
-        : selectedTab === 'image'
-        ? '계약서_이미지.png'
-        : '근로계약서_2024.pdf';
+  const handleOpenFileDialog = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleTabChange = (tab: 'pdf' | 'image' | 'text') => {
+    setSelectedTab(tab);
+    setUploadedFile(null);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    const maxSize = 10 * 1024 * 1024;
+
+    const isPdf = selectedTab === 'pdf' && file.type === 'application/pdf';
+    const isImage =
+      selectedTab === 'image' &&
+      ['image/png', 'image/jpeg', 'image/jpg'].includes(file.type);
+
+    if (!isPdf && !isImage) {
+      setErrorMessage(
+        selectedTab === 'pdf'
+          ? 'PDF 파일만 업로드할 수 있어요.'
+          : 'PNG, JPG, JPEG 이미지 파일만 업로드할 수 있어요.'
+      );
+      setShowErrorModal(true);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      return;
+    }
+
+    if (file.size > maxSize) {
+      setErrorMessage('파일 크기는 10MB 이하만 업로드할 수 있어요.');
+      setShowErrorModal(true);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      return;
+    }
+
+    setUploadedFile(file.name);
+
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text: `업로드 완료: ${file.name}` },
+      {
+        role: 'bot',
+        text: '업로드가 완료되었어요. 이제 AI 분석을 시작해볼까요?',
+      },
+    ]);
+  };
+
+  const handleTextUpload = () => {
+    const fileName = '텍스트 계약서';
 
     setUploadedFile(fileName);
 
@@ -120,6 +186,14 @@ export function Upload() {
           'radial-gradient(circle at 18% 18%, rgba(95,117,177,0.18) 0%, rgba(95,117,177,0.06) 24%, transparent 48%), linear-gradient(180deg, #EEF2F9 0%, #FFFFFF 100%)',
       }}
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={selectedTab === 'pdf' ? '.pdf' : '.png,.jpg,.jpeg'}
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
       <div className="mx-auto flex min-h-screen max-w-[1480px] flex-col px-5 sm:px-8 md:px-10 lg:px-16 xl:px-24">
         <header className="flex h-[72px] items-center sm:h-20">
           <div className="flex w-[72px] items-center justify-start sm:w-[96px]">
@@ -193,7 +267,7 @@ export function Upload() {
                     <div className="mt-4 grid grid-cols-3 gap-2 rounded-[18px] bg-white p-1.5 shadow-sm">
                       <button
                         type="button"
-                        onClick={() => setSelectedTab('pdf')}
+                        onClick={() => handleTabChange('pdf')}
                         className={`flex h-[46px] items-center justify-center gap-2 rounded-[14px] text-[13px] font-medium transition-all sm:text-[14px] ${
                           selectedTab === 'pdf'
                             ? 'bg-[#EEF2F9] text-slate-900 shadow-sm'
@@ -206,7 +280,7 @@ export function Upload() {
 
                       <button
                         type="button"
-                        onClick={() => setSelectedTab('image')}
+                        onClick={() => handleTabChange('image')}
                         className={`flex h-[46px] items-center justify-center gap-2 rounded-[14px] text-[13px] font-medium transition-all sm:text-[14px] ${
                           selectedTab === 'image'
                             ? 'bg-[#EEF2F9] text-slate-900 shadow-sm'
@@ -219,7 +293,7 @@ export function Upload() {
 
                       <button
                         type="button"
-                        onClick={() => setSelectedTab('text')}
+                        onClick={() => handleTabChange('text')}
                         className={`flex h-[46px] items-center justify-center gap-2 rounded-[14px] text-[13px] font-medium transition-all sm:text-[14px] ${
                           selectedTab === 'text'
                             ? 'bg-[#EEF2F9] text-slate-900 shadow-sm'
@@ -241,7 +315,7 @@ export function Upload() {
                             />
                             <button
                               type="button"
-                              onClick={handleFileUpload}
+                              onClick={handleTextUpload}
                               className="inline-flex h-[54px] w-full items-center justify-center gap-2 rounded-[18px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5 sm:h-[56px] sm:text-[16px]"
                               style={{
                                 background:
@@ -256,7 +330,7 @@ export function Upload() {
                         ) : (
                           <button
                             type="button"
-                            onClick={handleFileUpload}
+                            onClick={handleOpenFileDialog}
                             className="flex w-full flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-white px-5 py-10 text-center transition-all hover:border-[#BFCBFF] hover:bg-[#FCFDFF] sm:px-6 sm:py-12"
                           >
                             <div
@@ -292,10 +366,12 @@ export function Upload() {
                         <p className="text-[14px] font-medium text-slate-500">
                           업로드된 파일
                         </p>
+
                         <div className="mt-3 flex items-center gap-3 rounded-[18px] bg-[#F8FAFF] p-4">
                           <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-br from-[#667AF2] to-[#8097F8] text-white">
                             <FileText size={20} />
                           </div>
+
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-[15px] font-semibold text-slate-900">
                               {uploadedFile}
@@ -327,6 +403,7 @@ export function Upload() {
                         <p className="text-[14px] font-semibold text-slate-800 sm:text-[15px]">
                           추천 질문
                         </p>
+
                         <div className="mt-3 space-y-2">
                           {suggestedQuestions.map((question, index) => (
                             <button
@@ -396,6 +473,7 @@ export function Upload() {
                         placeholder="메시지를 입력하세요..."
                         className="h-[50px] flex-1 rounded-[18px] border border-slate-200/80 bg-white px-4 text-[14px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] sm:h-[52px] sm:text-[15px]"
                       />
+
                       <button
                         type="button"
                         onClick={() => handleSendMessage()}
@@ -415,6 +493,44 @@ export function Upload() {
           </section>
         </main>
       </div>
+
+      {showErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-[360px] rounded-2xl bg-white p-5 shadow-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[16px] font-semibold text-slate-900">
+                  업로드 실패
+                </h2>
+                <p className="mt-2 text-[13px] leading-6 text-slate-500">
+                  {errorMessage}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowErrorModal(false)}
+                className="text-slate-700"
+                aria-label="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowErrorModal(false)}
+              style={{
+                backgroundColor: '#EEF2FF',
+                color: '#4C63D2',
+              }}
+              className="mt-6 w-full rounded-xl py-2.5 text-[13px] font-semibold shadow-sm transition hover:opacity-90"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

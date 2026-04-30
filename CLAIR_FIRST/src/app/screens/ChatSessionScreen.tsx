@@ -12,6 +12,8 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
+import client from '../../api/client';
+
 type Message = {
   id: number;
   role: 'user' | 'assistant';
