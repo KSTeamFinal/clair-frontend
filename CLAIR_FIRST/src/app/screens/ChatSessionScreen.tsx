@@ -10,6 +10,7 @@ import {
   Clock3,
   ChevronRight,
   ChevronDown,
+  X,
 } from 'lucide-react';
 
 import client from '../../api/client';
@@ -40,10 +41,30 @@ const initialSessions: Session[] = [
     messageCount: 6,
     preview: '근로계약서의 수습기간 조항이 적절한지 검토해줘.',
     messages: [
-      { id: 1, role: 'user', text: '근로계약서의 수습기간 조항이 적절한지 검토해줘.', time: '오후 3:10' },
-      { id: 2, role: 'assistant', text: '수습기간의 길이, 감액 비율, 평가 기준이 함께 명시되어 있는지 확인하는 것이 좋아요.', time: '오후 3:11' },
-      { id: 3, role: 'user', text: '퇴사 통보 조항도 같이 봐줘.', time: '오후 3:12' },
-      { id: 4, role: 'assistant', text: '일방적으로 불리한 통보 기간이 설정되어 있지 않은지 확인해볼게요.', time: '오후 3:13' },
+      {
+        id: 1,
+        role: 'user',
+        text: '근로계약서의 수습기간 조항이 적절한지 검토해줘.',
+        time: '오후 3:10',
+      },
+      {
+        id: 2,
+        role: 'assistant',
+        text: '수습기간의 길이, 감액 비율, 평가 기준이 함께 명시되어 있는지 확인하는 것이 좋아요.',
+        time: '오후 3:11',
+      },
+      {
+        id: 3,
+        role: 'user',
+        text: '퇴사 통보 조항도 같이 봐줘.',
+        time: '오후 3:12',
+      },
+      {
+        id: 4,
+        role: 'assistant',
+        text: '일방적으로 불리한 통보 기간이 설정되어 있지 않은지 확인해볼게요.',
+        time: '오후 3:13',
+      },
     ],
   },
   {
@@ -54,8 +75,18 @@ const initialSessions: Session[] = [
     messageCount: 4,
     preview: '상가 임대차 계약서의 원상복구 조항이 과도한지 궁금해.',
     messages: [
-      { id: 1, role: 'user', text: '상가 임대차 계약서의 원상복구 조항이 과도한지 궁금해.', time: '오전 11:02' },
-      { id: 2, role: 'assistant', text: '임차인의 통상적인 사용 범위를 넘는 의무를 지우는지 먼저 확인해봐야 해요.', time: '오전 11:03' },
+      {
+        id: 1,
+        role: 'user',
+        text: '상가 임대차 계약서의 원상복구 조항이 과도한지 궁금해.',
+        time: '오전 11:02',
+      },
+      {
+        id: 2,
+        role: 'assistant',
+        text: '임차인의 통상적인 사용 범위를 넘는 의무를 지우는지 먼저 확인해봐야 해요.',
+        time: '오전 11:03',
+      },
     ],
   },
   {
@@ -66,8 +97,18 @@ const initialSessions: Session[] = [
     messageCount: 5,
     preview: '저작권 귀속 조항이 프리랜서에게 너무 불리한 것 같아.',
     messages: [
-      { id: 1, role: 'user', text: '저작권 귀속 조항이 프리랜서에게 너무 불리한 것 같아.', time: '오후 8:41' },
-      { id: 2, role: 'assistant', text: '대가 지급 범위와 2차적 저작물 활용 권한까지 함께 봐야 정확히 판단할 수 있어요.', time: '오후 8:42' },
+      {
+        id: 1,
+        role: 'user',
+        text: '저작권 귀속 조항이 프리랜서에게 너무 불리한 것 같아.',
+        time: '오후 8:41',
+      },
+      {
+        id: 2,
+        role: 'assistant',
+        text: '대가 지급 범위와 2차적 저작물 활용 권한까지 함께 봐야 정확히 판단할 수 있어요.',
+        time: '오후 8:42',
+      },
     ],
   },
 ];
@@ -150,7 +191,11 @@ function MessageBubble({ message }: { message: Message }) {
         }`}
       >
         <p className="text-[11px] leading-5 sm:text-[12px]">{message.text}</p>
-        <p className={`mt-1 text-[10px] ${isUser ? 'text-white/75' : 'text-slate-400'}`}>
+        <p
+          className={`mt-1 text-[10px] ${
+            isUser ? 'text-white/75' : 'text-slate-400'
+          }`}
+        >
           {message.time}
         </p>
       </div>
@@ -160,12 +205,16 @@ function MessageBubble({ message }: { message: Message }) {
 
 export default function ChatSessionScreen() {
   const navigate = useNavigate();
+
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
   const [selectedSessionId, setSelectedSessionId] = useState<number>(1);
   const [search, setSearch] = useState('');
   const [messageInput, setMessageInput] = useState('');
   const [listOpen, setListOpen] = useState(true);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
 
   const filteredSessions = useMemo(() => {
     return sessions.filter(
@@ -176,7 +225,9 @@ export default function ChatSessionScreen() {
   }, [sessions, search]);
 
   const selectedSession =
-    sessions.find((session) => session.id === selectedSessionId) ?? sessions[0] ?? null;
+    sessions.find((session) => session.id === selectedSessionId) ??
+    sessions[0] ??
+    null;
 
   const firstUserMessage =
     selectedSession?.messages.find((message) => message.role === 'user') ?? null;
@@ -208,13 +259,28 @@ export default function ChatSessionScreen() {
     setMessageInput('');
   };
 
-  const handleDeleteSession = (sessionId: number) => {
-    const next = sessions.filter((session) => session.id !== sessionId);
+  const handleOpenDeleteModal = (sessionId: number) => {
+    setDeleteTargetId(sessionId);
+    setShowDeleteModal(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    setShowDeleteModal(false);
+    setDeleteTargetId(null);
+  };
+
+  const handleConfirmDeleteSession = () => {
+    if (deleteTargetId === null) return;
+
+    const next = sessions.filter((session) => session.id !== deleteTargetId);
     setSessions(next);
 
-    if (selectedSessionId === sessionId) {
+    if (selectedSessionId === deleteTargetId) {
       setSelectedSessionId(next[0]?.id ?? 0);
     }
+
+    setShowDeleteModal(false);
+    setDeleteTargetId(null);
   };
 
   const handleSelectSession = (sessionId: number) => {
@@ -313,9 +379,14 @@ export default function ChatSessionScreen() {
                   className="flex w-full items-center justify-between gap-3 text-left lg:hidden"
                 >
                   <div>
-                    <h2 className="text-[14px] font-semibold text-slate-900">세션 이력</h2>
-                    <p className="mt-0.5 text-[10px] text-slate-400">{filteredSessions.length}개 세션</p>
+                    <h2 className="text-[14px] font-semibold text-slate-900">
+                      세션 이력
+                    </h2>
+                    <p className="mt-0.5 text-[10px] text-slate-400">
+                      {filteredSessions.length}개 세션
+                    </p>
                   </div>
+
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFF]">
                     <ChevronDown
                       className={`h-4 w-4 text-slate-500 transition-transform ${
@@ -325,7 +396,9 @@ export default function ChatSessionScreen() {
                   </div>
                 </button>
 
-                <div className={`${listOpen ? 'block' : 'hidden'} mt-3 lg:mt-0 lg:block`}>
+                <div
+                  className={`${listOpen ? 'block' : 'hidden'} mt-3 lg:mt-0 lg:block`}
+                >
                   <button
                     type="button"
                     onClick={handleCreateSession}
@@ -362,7 +435,7 @@ export default function ChatSessionScreen() {
                         session={session}
                         isActive={selectedSessionId === session.id}
                         onClick={() => handleSelectSession(session.id)}
-                        onDelete={() => handleDeleteSession(session.id)}
+                        onDelete={() => handleOpenDeleteModal(session.id)}
                       />
                     ))}
 
@@ -384,9 +457,14 @@ export default function ChatSessionScreen() {
                       className="flex w-full items-center justify-between gap-3 text-left lg:hidden"
                     >
                       <div>
-                        <h2 className="text-[14px] font-semibold text-slate-900">세션 상세</h2>
-                        <p className="mt-0.5 text-[10px] text-slate-400">{selectedSession.title}</p>
+                        <h2 className="text-[14px] font-semibold text-slate-900">
+                          세션 상세
+                        </h2>
+                        <p className="mt-0.5 text-[10px] text-slate-400">
+                          {selectedSession.title}
+                        </p>
                       </div>
+
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFF]">
                         <ChevronDown
                           className={`h-4 w-4 text-slate-500 transition-transform ${
@@ -396,7 +474,9 @@ export default function ChatSessionScreen() {
                       </div>
                     </button>
 
-                    <div className={`${detailOpen ? 'block' : 'hidden'} mt-3 lg:mt-0 lg:block`}>
+                    <div
+                      className={`${detailOpen ? 'block' : 'hidden'} mt-3 lg:mt-0 lg:block`}
+                    >
                       <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
@@ -405,8 +485,10 @@ export default function ChatSessionScreen() {
                             </h2>
                             <ChevronRight className="h-4 w-4 text-slate-300" />
                           </div>
+
                           <p className="mt-1 text-[10px] text-slate-400 sm:text-[11px]">
-                            생성일 {selectedSession.createdAt} · 최근 업데이트 {selectedSession.updatedAt}
+                            생성일 {selectedSession.createdAt} · 최근 업데이트{' '}
+                            {selectedSession.updatedAt}
                           </p>
                         </div>
 
@@ -417,8 +499,12 @@ export default function ChatSessionScreen() {
 
                       <div className="mt-3 rounded-[14px] bg-[#F8FAFF] p-3">
                         <div className="flex items-center justify-between">
-                          <p className="text-[10px] font-medium text-slate-400 sm:text-[11px]">세션 상세</p>
-                          <span className="text-[10px] text-slate-400">ID {selectedSession.id}</span>
+                          <p className="text-[10px] font-medium text-slate-400 sm:text-[11px]">
+                            세션 상세
+                          </p>
+                          <span className="text-[10px] text-slate-400">
+                            ID {selectedSession.id}
+                          </span>
                         </div>
 
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -428,18 +514,21 @@ export default function ChatSessionScreen() {
                               {selectedSession.createdAt}
                             </p>
                           </div>
+
                           <div className="rounded-xl bg-white px-3 py-2">
                             <p className="text-[10px] text-slate-400">최근 수정일</p>
                             <p className="mt-1 text-[11px] font-medium text-slate-700 sm:text-[12px]">
                               {selectedSession.updatedAt}
                             </p>
                           </div>
+
                           <div className="rounded-xl bg-white px-3 py-2">
                             <p className="text-[10px] text-slate-400">총 메시지 수</p>
                             <p className="mt-1 text-[11px] font-medium text-slate-700 sm:text-[12px]">
                               {selectedSession.messageCount}개
                             </p>
                           </div>
+
                           <div className="rounded-xl bg-white px-3 py-2">
                             <p className="text-[10px] text-slate-400">세션 제목</p>
                             <p className="mt-1 truncate text-[11px] font-medium text-slate-700 sm:text-[12px]">
@@ -455,12 +544,14 @@ export default function ChatSessionScreen() {
                               {firstUserMessage?.text ?? '아직 질문이 없어요.'}
                             </p>
                           </div>
+
                           <div className="rounded-xl bg-white px-3 py-2">
                             <p className="text-[10px] text-slate-400">최근 질문</p>
                             <p className="mt-1 text-[11px] leading-5 text-slate-700 sm:text-[12px]">
                               {lastUserMessage?.text ?? '아직 질문이 없어요.'}
                             </p>
                           </div>
+
                           <div className="rounded-xl bg-white px-3 py-2">
                             <p className="text-[10px] text-slate-400">최근 응답</p>
                             <p className="mt-1 text-[11px] leading-5 text-slate-700 sm:text-[12px]">
@@ -475,7 +566,9 @@ export default function ChatSessionScreen() {
                           <h3 className="text-[12px] font-semibold text-slate-900 sm:text-[13px]">
                             대화 내역 조회
                           </h3>
-                          <span className="text-[10px] text-slate-400">최신순 반영</span>
+                          <span className="text-[10px] text-slate-400">
+                            최신순 반영
+                          </span>
                         </div>
 
                         <div className="mt-3 max-h-[160px] space-y-2.5 overflow-y-auto pr-1 sm:max-h-[190px]">
@@ -490,7 +583,9 @@ export default function ChatSessionScreen() {
                           <h3 className="text-[12px] font-semibold text-slate-900 sm:text-[13px]">
                             메시지 전송
                           </h3>
-                          <span className="text-[10px] text-slate-400">Enter로 전송 가능</span>
+                          <span className="text-[10px] text-slate-400">
+                            Enter로 전송 가능
+                          </span>
                         </div>
 
                         <div className="mt-3 flex items-end gap-2">
@@ -528,6 +623,54 @@ export default function ChatSessionScreen() {
           </div>
         </main>
       </div>
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-[360px] rounded-2xl bg-white p-5 shadow-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[16px] font-semibold text-slate-900">
+                  채팅 세션을 삭제할까요?
+                </h2>
+                <p className="mt-2 text-[13px] leading-6 text-slate-500">
+                  삭제하면 해당 대화 내역을 다시 확인할 수 없습니다.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCloseDeleteModal}
+                className="text-slate-700"
+                aria-label="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+              <button
+                type="button"
+                onClick={handleCloseDeleteModal}
+                className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[13px] font-semibold text-slate-700"
+              >
+                취소
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmDeleteSession}
+                style={{
+                  backgroundColor: '#EEF2FF',
+                  color: '#4C63D2',
+                }}
+                className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold shadow-sm transition hover:opacity-90"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

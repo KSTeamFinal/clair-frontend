@@ -13,6 +13,7 @@ import {
   Eye,
   Clock3,
   FileUp,
+  X,
 } from 'lucide-react';
 
 type ContractStatus = '업로드 완료' | '분석 대기' | '분석 완료' | '삭제됨';
@@ -220,7 +221,14 @@ export default function ContractManagementScreen() {
   const [deleteHistoryOpen, setDeleteHistoryOpen] = useState(false);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState('');
+  const [selectedFileSize, setSelectedFileSize] = useState('');
   const [analysisNote, setAnalysisNote] = useState('');
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+
+  const [showUploadErrorModal, setShowUploadErrorModal] = useState(false);
+  const [uploadErrorMessage, setUploadErrorMessage] = useState('');
 
   const visibleContracts = useMemo(() => {
     return contracts.filter(
@@ -241,10 +249,36 @@ export default function ContractManagementScreen() {
     visibleContracts[0] ??
     null;
 
+  const formatFileSize = (size: number) => {
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(1)}MB`;
+    }
+    return `${Math.max(1, Math.round(size / 1024))}KB`;
+  };
+
   const handleSelectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const maxSize = 10 * 1024 * 1024;
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+    if (!isPdf) {
+      setUploadErrorMessage('PDF 파일만 업로드할 수 있어요.');
+      setShowUploadErrorModal(true);
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > maxSize) {
+      setUploadErrorMessage('파일 크기는 10MB 이하만 업로드할 수 있어요.');
+      setShowUploadErrorModal(true);
+      e.target.value = '';
+      return;
+    }
+
     setSelectedFileName(file.name);
+    setSelectedFileSize(formatFileSize(file.size));
   };
 
   const handleUpload = () => {
@@ -258,21 +292,34 @@ export default function ContractManagementScreen() {
       updatedAt: '방금 전',
       status: '업로드 완료',
       fileName: selectedFileName,
-      size: '업로드 파일',
+      size: selectedFileSize || '업로드 파일',
       summary: '새로 업로드된 계약서예요. 상세 내용을 확인하거나 분석 요청을 진행할 수 있어요.',
     };
 
     setContracts((prev) => [newContract, ...prev]);
     setSelectedContractId(newContract.id);
     setSelectedFileName('');
+    setSelectedFileSize('');
     setUploadOpen(true);
     setListOpen(true);
     setDetailOpen(true);
   };
 
-  const handleDeleteContract = (contractId: number) => {
+  const handleOpenDeleteModal = (contractId: number) => {
+    setDeleteTargetId(contractId);
+    setShowDeleteModal(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    setDeleteTargetId(null);
+    setShowDeleteModal(false);
+  };
+
+  const handleConfirmDeleteContract = () => {
+    if (deleteTargetId === null) return;
+
     const updatedContracts = contracts.map((contract) =>
-      contract.id === contractId
+      contract.id === deleteTargetId
         ? {
             ...contract,
             status: '삭제됨' as ContractStatus,
@@ -285,9 +332,12 @@ export default function ContractManagementScreen() {
     setContracts(updatedContracts);
 
     const remaining = updatedContracts.filter(
-      (contract) => contract.id !== contractId && contract.status !== '삭제됨'
+      (contract) => contract.id !== deleteTargetId && contract.status !== '삭제됨'
     );
+
     setSelectedContractId(remaining[0]?.id ?? 0);
+    setDeleteTargetId(null);
+    setShowDeleteModal(false);
   };
 
   const handleAnalyze = () => {
@@ -364,7 +414,7 @@ export default function ContractManagementScreen() {
             <div className="mt-3.5 grid gap-3.5 sm:mt-4 sm:gap-4">
               <SectionCard
                 title="계약서 업로드"
-                subtitle="PDF 또는 문서 파일 업로드"
+                subtitle="PDF 파일 업로드"
                 open={uploadOpen}
                 onToggle={() => setUploadOpen((prev) => !prev)}
               >
@@ -388,7 +438,12 @@ export default function ContractManagementScreen() {
                     <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#5B72D6] bg-[#6C80DD] px-3 text-[11px] font-semibold text-white shadow-md transition hover:opacity-90 sm:h-11 sm:w-auto sm:px-4 sm:text-[12px]">
                       <FileUp className="h-4 w-4" />
                       파일 선택
-                      <input type="file" className="hidden" onChange={handleSelectFile} />
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        className="hidden"
+                        onChange={handleSelectFile}
+                      />
                     </label>
                   </div>
 
@@ -434,7 +489,7 @@ export default function ContractManagementScreen() {
                         contract={contract}
                         isActive={selectedContractId === contract.id}
                         onClick={() => setSelectedContractId(contract.id)}
-                        onDelete={() => handleDeleteContract(contract.id)}
+                        onDelete={() => handleOpenDeleteModal(contract.id)}
                       />
                     ))}
 
@@ -527,7 +582,7 @@ export default function ContractManagementScreen() {
 
                           <button
                             type="button"
-                            onClick={() => handleDeleteContract(selectedContract.id)}
+                            onClick={() => handleOpenDeleteModal(selectedContract.id)}
                             className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[12px] font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 sm:w-auto"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -629,6 +684,92 @@ export default function ContractManagementScreen() {
           </div>
         </main>
       </div>
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-[360px] rounded-2xl bg-white p-5 shadow-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[16px] font-semibold text-slate-900">
+                  계약서를 삭제할까요?
+                </h2>
+                <p className="mt-2 text-[13px] leading-6 text-slate-500">
+                  삭제하면 계약서 파일과 분석 결과를 다시 확인할 수 없습니다.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCloseDeleteModal}
+                className="text-slate-700"
+                aria-label="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+              <button
+                type="button"
+                onClick={handleCloseDeleteModal}
+                className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[13px] font-semibold text-slate-700"
+              >
+                취소
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmDeleteContract}
+                style={{
+                  backgroundColor: '#EEF2FF',
+                  color: '#4C63D2',
+                }}
+                className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold shadow-sm transition hover:opacity-90"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUploadErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-[360px] rounded-2xl bg-white p-5 shadow-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[16px] font-semibold text-slate-900">
+                  업로드 실패
+                </h2>
+                <p className="mt-2 text-[13px] leading-6 text-slate-500">
+                  {uploadErrorMessage}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowUploadErrorModal(false)}
+                className="text-slate-700"
+                aria-label="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowUploadErrorModal(false)}
+              style={{
+                backgroundColor: '#EEF2FF',
+                color: '#4C63D2',
+              }}
+              className="mt-6 w-full rounded-xl py-2.5 text-[13px] font-semibold shadow-sm transition hover:opacity-90"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ export default function ProfileScreen() {
   const [isEdit, setIsEdit] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showSaveToast, setShowSaveToast] = useState(false);
 
   const [user, setUser] = useState({
     name: '지연 이',
@@ -18,6 +19,11 @@ export default function ProfileScreen() {
 
   const handleSave = () => {
     setIsEdit(false);
+    setShowSaveToast(true);
+
+    setTimeout(() => {
+      setShowSaveToast(false);
+    }, 1800);
   };
 
   const handleLogout = () => {
@@ -27,7 +33,7 @@ export default function ProfileScreen() {
 
   return (
     <div
-      className="min-h-screen"
+      className="relative min-h-screen"
       style={{
         background:
           'radial-gradient(circle at 18% 18%, rgba(95,117,177,0.18) 0%, rgba(95,117,177,0.06) 24%, transparent 48%), linear-gradient(180deg, #EEF2F9 0%, #FFFFFF 100%)',
@@ -117,6 +123,7 @@ export default function ProfileScreen() {
                       className="flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-[14px]"
                     />
                     <button
+                      type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="h-10 w-10 rounded-xl border border-slate-200 bg-white"
                     >
@@ -129,6 +136,7 @@ export default function ProfileScreen() {
 
             <div className="mt-5 border-t border-slate-200/70 pt-4 text-center">
               <button
+                type="button"
                 onClick={() => setShowLogoutModal(true)}
                 style={{
                   backgroundColor: '#EEF2FF',
@@ -190,6 +198,14 @@ export default function ProfileScreen() {
                 로그아웃
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveToast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 px-4">
+          <div className="rounded-full border border-white/80 bg-slate-900/85 px-5 py-3 text-[13px] font-medium text-white shadow-lg backdrop-blur sm:text-[14px]">
+            프로필 정보가 저장되었습니다
           </div>
         </div>
       )}
