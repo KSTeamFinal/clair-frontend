@@ -5,7 +5,7 @@ import axios, { AxiosInstance } from 'axios';
  * 로컬 개발 환경인 경우 http://localhost:8000을 기본으로 사용하며,
  * 배포나 외부 접속 환경(ngrok 등)인 경우 환경 변수(VITE_API_URL)를 우선적으로 참조합니다.
  */
-const BASE_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:8000'; 
+const BASE_URL = (import.meta as any).env.VITE_API_URL || 'http://127.0.0.1:8000'; 
 
 const client: AxiosInstance = axios.create({
   baseURL: BASE_URL,

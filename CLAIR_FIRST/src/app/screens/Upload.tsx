@@ -1,6 +1,7 @@
 // Upload.tsx
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import  {contractApi} from '../../api';
 import client from '../../api/client';
 import {
   ArrowLeft,
@@ -15,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 
+
 type Message = {
   role: 'bot' | 'user';
   text: string;
@@ -23,11 +25,12 @@ type Message = {
 export function Upload() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
+  const [textInput, setTextInput] = useState('');
   const [selectedTab, setSelectedTab] = useState<'pdf' | 'image' | 'text'>('pdf');
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const [rawFile, setRawFile] = useState<File | null>(null);
   const [inputMessage, setInputMessage] = useState('');
-
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -98,7 +101,7 @@ export function Upload() {
     }
 
     setUploadedFile(file.name);
-
+    setRawFile(file);           // 백엔드에 보낼 실제 파일 객체 (추가!)
     setMessages((prev) => [
       ...prev,
       { role: 'user', text: `업로드 완료: ${file.name}` },
@@ -110,33 +113,56 @@ export function Upload() {
   };
 
   const handleTextUpload = () => {
-    const fileName = '텍스트 계약서';
+    if (!textInput.trim()) return alert("내용을 입력해주세요.");
+
+    const fileName = '텍스트_계약서.txt';
+    
+    // 텍스트를 파일 객체로 변환
+    const blob = new Blob([textInput], { type: 'text/plain' });
+    const file = new File([blob], fileName, { type: 'text/plain' });
 
     setUploadedFile(fileName);
+    setRawFile(file); // 이제 handleStartAnalysis에서 이 파일을 서버로 보냅니다.
 
     setMessages((prev) => [
       ...prev,
       { role: 'user', text: `업로드 완료: ${fileName}` },
-      {
-        role: 'bot',
-        text: '업로드가 완료되었어요. 이제 AI 분석을 시작해볼까요?',
-      },
+      { role: 'bot', text: '업로드가 완료되었어요. 이제 AI 분석을 시작해볼까요?' },
     ]);
   };
 
-  const handleStartAnalysis = () => {
+  const handleStartAnalysis = async () => {
+    // 1. 파일이 없거나 이미 분석 중이면 중단
+    if (!rawFile || isAnalyzing) {
+      if (!rawFile) alert("파일을 다시 업로드해주세요.");
+      return;
+    }
+
+    // 2. 분석 시작 상태로 변경
+    setIsAnalyzing(true);
+
     setMessages((prev) => [
       ...prev,
       { role: 'user', text: '분석 시작해주세요' },
-      {
-        role: 'bot',
-        text: '좋아요. 지금 바로 분석을 시작할게요. 잠시만 기다려주세요.',
-      },
+      { role: 'bot', text: '좋아요. 지금 바로 분석을 시작할게요. 잠시만 기다려주세요.' },
     ]);
 
-    setTimeout(() => {
-      navigate('/loading');
-    }, 1000);
+    try {
+      // 3. 실제 API 호출
+      const response = await contractApi.upload(rawFile);
+      
+      // 4. 성공 시 이동
+      setTimeout(() => {
+        navigate(`/loading/${response.id}`); 
+      }, 1000);
+      
+    } catch (error) {
+      console.error("업로드 에러:", error);
+      alert("서버와 통신 중 오류가 발생했습니다.");
+      
+      // 5. 에러 시 다시 버튼을 누를 수 있도록 상태 해제
+      setIsAnalyzing(false); 
+    }
   };
 
   const handleSendMessage = (preset?: string) => {
@@ -310,6 +336,8 @@ export function Upload() {
                         {selectedTab === 'text' ? (
                           <div className="space-y-3">
                             <textarea
+                              value={textInput} // 추가: 상태와 연결
+                              onChange={(e) => setTextInput(e.target.value)} // 추가: 입력 시 상태 업데이트
                               placeholder="계약서 내용을 입력하세요..."
                               className="h-36 w-full resize-none rounded-[20px] border border-slate-200/80 bg-white px-4 py-4 text-[14px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] sm:h-44 sm:text-[15px]"
                             />
@@ -385,6 +413,7 @@ export function Upload() {
                         <button
                           type="button"
                           onClick={handleStartAnalysis}
+                          disabled={isAnalyzing}
                           className="mt-4 inline-flex h-[54px] w-full items-center justify-center gap-2 rounded-[18px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5 sm:h-[56px] sm:text-[16px]"
                           style={{
                             background:
@@ -393,7 +422,7 @@ export function Upload() {
                           }}
                         >
                           <Sparkles size={18} />
-                          AI 분석 시작하기
+                          {isAnalyzing ? "분석 요청 중..." : "AI 분석 시작하기"}
                         </button>
                       </div>
                     )}
