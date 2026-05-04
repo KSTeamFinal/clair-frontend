@@ -1,5 +1,6 @@
 // Home.tsx
 import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import client from '../../api/client';
 import {
   FileText,
@@ -12,6 +13,39 @@ import {
 
 export function Home() {
   const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(true);
+  const [nickname, setNickname] = useState(''); //닉네임 상태 추가
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // 1. 내 정보 가져오기 (이미 client에 BASE_URL이 있으므로 엔드포인트만 적습니다)
+        // client를 사용하면 401 에러 시 client.ts에서 자동으로 window.location.href = '/login'을 실행합니다.
+        const userRes = await client.get('/api/v1/auth/me');
+        const userData = userRes.data; // axios는 응답 데이터가 .data에 들어있습니다.
+        
+        console.log("내 정보:", userData);
+
+        if (userData) {
+          setNickname(userData.nickname || userData.user?.email || '사용자');
+        }
+
+        // 2. 계약서 목록 가져오기
+        const contractRes = await client.get('/api/v1/contracts/');
+        const contractData = contractRes.data;
+        console.log("계약서 목록:", contractData);
+
+      } catch (error: any) {
+        // 여기서 401 에러는 이미 client.ts에서 처리하므로, 
+        // 그 외의 일반적인 네트워크 에러 등만 콘솔에 찍힙니다.
+        console.error("데이터 로드 실패:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   const recentDocuments = [
     {
@@ -117,7 +151,7 @@ export function Home() {
                   </div>
 
                   <h1 className="mt-4 text-[24px] font-semibold leading-[1.25] text-slate-900 sm:text-[30px] md:text-[38px] lg:text-[52px]">
-                    안녕하세요,
+                    안녕하세요, {nickname && <span className="text-[#667AF2]">{nickname}님</span>}
                     <br />
                     오늘도 안전한 계약을 시작해볼까요?
                   </h1>

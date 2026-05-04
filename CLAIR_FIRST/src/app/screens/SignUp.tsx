@@ -43,14 +43,18 @@ export function SignUp() {
       return;
     }
 
-    try {
+      try {
+    // 직접 적혀있던 ngrok 주소를 지우고 환경 변수를 사용하도록 변경합니다.
+    // @ts-ignore
+const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      
       const response = await fetch(
-        'https://ngoc-wiggliest-brian.ngrok-free.dev/api/v1/auth/signup',
+        `${apiUrl}/api/v1/auth/signup`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
+            // 로컬 연결 시에는 ngrok 경고 헤더가 필요 없지만 남겨둬도 무방합니다.
           },
           body: JSON.stringify({
             email: email.trim(),
@@ -59,7 +63,7 @@ export function SignUp() {
             password_confirm: passwordCheck,
           }),
         }
-      );
+    );
 
       const data = await response.json().catch(() => null);
 

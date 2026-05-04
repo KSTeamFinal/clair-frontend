@@ -20,6 +20,7 @@ export function Login() {
     navigate('/');
   };
 
+    // 35번째 줄부터 수정 시작
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       setIsLoginErrorOpen(true);
@@ -29,7 +30,14 @@ export function Login() {
     try {
       setIsLoading(true);
 
-      const response = await fetch('https://ngoc-wiggliest-brian.ngrok-free.dev/api/v1/auth/login/json', {
+      // 환경 변수 설정 (빨간 줄 방지를 위해 @ts-ignore 추가)
+      // 46번째 줄 근처
+      // @ts-ignore
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
+      // 49번째 줄 근처
+      // 기존 ngrok 주소 대신 백틱(`)과 ${apiUrl}을 사용했는지 확인!
+      const response = await fetch(`${apiUrl}/api/v1/auth/login/json`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -45,13 +53,24 @@ export function Login() {
         return;
       }
 
-      const data = await response.json();
+      // Login.tsx 의 handleLogin 함수 안쪽
+        // Login.tsx 의 handleLogin 함수 내부 수정
+    const data = await response.json();
+    console.log("로그인 서버 응답 전체 데이터:", data); // 👈 여기서 정확한 이름을 눈으로 확인 가능!
 
-      if (data.accessToken) {
-        localStorage.setItem('accessToken', data.accessToken);
-      }
+    // 둘 중 하나라도 있으면 저장하도록 '||' (OR 연산자) 사용
+    const token = data.accessToken || data.access_token;
 
-      navigate('/home');
+    if (token) {
+      localStorage.setItem('accessToken', token);
+      console.log("토큰 저장 성공! ");
+      navigate('/home'); //토큰이 있을 때만 홈으로 이동
+    } else {
+      console.error("토큰을 찾을 수 없습니다.");
+      setIsLoginErrorOpen(true); //토큰이 없으면 로그인 실패 팝업 띄우기
+    }
+
+    navigate('/home');
     } catch (error) {
       console.error(error);
       setIsLoginErrorOpen(true);
