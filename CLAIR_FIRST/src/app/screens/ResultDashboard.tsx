@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import  {contractApi} from '../../api';
 import client from '../../api/client';
 import {
   ArrowLeft,
@@ -29,6 +30,7 @@ type Message = {
 
 export function ResultDashboard() {
   const navigate = useNavigate();
+  const {contractId} = useParams<{contractId: string}>();
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [showQuestions, setShowQuestions] = useState(false);
   const [inputMessage, setInputMessage] = useState('');

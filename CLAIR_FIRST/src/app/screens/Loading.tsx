@@ -1,7 +1,8 @@
 // Loading.tsx
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Bot, Check, Loader2 } from 'lucide-react';
+import { contractApi } from '../../api';
 import client from '../../api/client';
 
 type Message = {
@@ -15,6 +16,7 @@ type Step = {
 };
 
 export function Loading() {
+  const { contractId } = useParams(); // URL에서 ID 추출 (/loading/1 -> 1)
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([
     {

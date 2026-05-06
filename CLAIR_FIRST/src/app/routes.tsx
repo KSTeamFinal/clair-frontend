@@ -39,7 +39,7 @@ export const router = createBrowserRouter([
     element: <Upload />,
   },
   {
-    path: '/loading',
+    path: '/loading/:contractId',
     element: <Loading />,
   },
   {
