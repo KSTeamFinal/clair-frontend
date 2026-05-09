@@ -30,11 +30,10 @@ export function Home() {
         const contractRes = await client.get('/api/v1/contracts/');
         const contractData = contractRes.data;
 
-        // ✅ 수정된 데이터 매핑 로직
         if (Array.isArray(contractData)) {
           setContracts(contractData);
-        } else if (contractData && contractData.results) {
-          setContracts(contractData.results);
+        } else if (contractData?.contracts) {
+          setContracts(contractData.contracts);
         }
 
       } catch (error: any) {
@@ -188,7 +187,7 @@ export function Home() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <h3 className="truncate text-sm font-semibold text-slate-900 sm:text-base">
-                              {doc.title || '제목 없는 문서'}
+                              {doc.original_filename || '제목 없는 문서'}
                             </h3>
                             <p className="mt-1 text-xs text-slate-500 sm:text-sm">
                               {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : '날짜 정보 없음'}
