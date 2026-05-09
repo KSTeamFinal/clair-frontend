@@ -43,7 +43,7 @@ export const router = createBrowserRouter([
     element: <Loading />,
   },
   {
-    path: '/result',
+    path: '/result/:contractId',
     element: <ResultDashboard />,
   },
   {

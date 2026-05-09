@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import client from '../../api/client';
 
 export function StartScreen() {
   const navigate = useNavigate();

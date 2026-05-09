@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Check } from 'lucide-react';
+import client from '../../api/client';
 
 const onboardingHighlights = [
   {

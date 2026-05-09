@@ -7,6 +7,11 @@ import { Home } from './screens/Home';
 import { Upload } from './screens/Upload';
 import { Loading } from './screens/Loading';
 import { ResultDashboard } from './screens/ResultDashboard';
+import NotificationScreen from './screens/NotificationScreen';
+import SettingsScreen from './screens/SettingsScreen';
+import ProfileScreen from './screens/ProfileScreen';
+import ChatSessionScreen from './screens/ChatSessionScreen';
+import ContractManagementScreen from './screens/ContractManagementScreen';
 
 export const router = createBrowserRouter([
   {
@@ -34,11 +39,35 @@ export const router = createBrowserRouter([
     element: <Upload />,
   },
   {
-    path: '/loading',
+    path: '/loading/:contractId',
     element: <Loading />,
   },
   {
-    path: '/result',
+    path: '/result/:contractId',
     element: <ResultDashboard />,
   },
+  {
+    path: '/notifications',
+    element: <NotificationScreen />
+  },
+  {
+    path: '/settings',
+    element: <SettingsScreen />
+  },
+  {
+    path: '/profile',
+    element: <ProfileScreen />
+  },
+  
+  {
+  path: '/chat-session',
+  element: <ChatSessionScreen />
+  },
+
+  {
+    path: '/contracts/manage',
+    element: <ContractManagementScreen />
+
+  }
+
 ]);

@@ -1,4 +1,3 @@
-// Home.tsx
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import client from '../../api/client';
@@ -14,18 +13,15 @@ import {
 export function Home() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
-  const [nickname, setNickname] = useState(''); //닉네임 상태 추가
+  const [nickname, setNickname] = useState('');
+  const [contracts, setContracts] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. 내 정보 가져오기 (이미 client에 BASE_URL이 있으므로 엔드포인트만 적습니다)
-        // client를 사용하면 401 에러 시 client.ts에서 자동으로 window.location.href = '/login'을 실행합니다.
+        // 1. 내 정보 가져오기
         const userRes = await client.get('/api/v1/auth/me');
-        const userData = userRes.data; // axios는 응답 데이터가 .data에 들어있습니다.
-        
-        console.log("내 정보:", userData);
-
+        const userData = userRes.data;
         if (userData) {
           setNickname(userData.nickname || userData.user?.email || '사용자');
         }
@@ -33,56 +29,30 @@ export function Home() {
         // 2. 계약서 목록 가져오기
         const contractRes = await client.get('/api/v1/contracts/');
         const contractData = contractRes.data;
-        console.log("계약서 목록:", contractData);
+
+        // ✅ 수정된 데이터 매핑 로직
+        if (Array.isArray(contractData)) {
+          setContracts(contractData);
+        } else if (contractData && contractData.results) {
+          setContracts(contractData.results);
+        }
 
       } catch (error: any) {
-        // 여기서 401 에러는 이미 client.ts에서 처리하므로, 
-        // 그 외의 일반적인 네트워크 에러 등만 콘솔에 찍힙니다.
         console.error("데이터 로드 실패:", error);
       } finally {
         setIsLoading(false);
       }
     };
-
     fetchData();
   }, []);
 
-  const recentDocuments = [
-    {
-      id: 1,
-      title: '근로계약서_2024.pdf',
-      date: '2024.03.15 · 5 페이지',
-      status: '안정적',
-      statusStyle: 'bg-emerald-50 text-emerald-600',
-      timeAgo: '2일 전',
-      iconStyle: 'from-[#667AF2] to-[#8097F8]',
-    },
-    {
-      id: 2,
-      title: '임대차계약서_상가.pdf',
-      date: '2024.03.12 · 8 페이지',
-      status: '확인 필요',
-      statusStyle: 'bg-amber-50 text-amber-600',
-      timeAgo: '5일 전',
-      iconStyle: 'from-[#8B7FD1] to-[#A99CE5]',
-    },
-    {
-      id: 3,
-      title: '프리랜서_계약서.pdf',
-      date: '2024.03.10 · 12 페이지',
-      status: '안정적',
-      statusStyle: 'bg-emerald-50 text-emerald-600',
-      timeAgo: '1주 전',
-      iconStyle: 'from-orange-500 to-red-500',
-    },
-  ];
-
+  // 상단 통계 수치 (백엔드 데이터에 따라 나중에 value를 변수로 바꿀 수 있습니다)
   const stats = [
     {
       id: 1,
       label: '총 분석 건수',
-      value: '24',
-      description: '+3 이번 주',
+      value: contracts.length.toString(), // 실제 데이터 개수 반영
+      description: '업로드된 전체 문서',
       descriptionClass: 'text-emerald-600',
       icon: <FileText size={20} className="text-[#6C80DD]" />,
       iconBg: 'bg-[#EEF2F9]',
@@ -99,8 +69,8 @@ export function Home() {
     {
       id: 3,
       label: 'AI로 절약한 시간',
-      value: '48시간',
-      description: '직접 검토 대비 이번 달',
+      value: `${contracts.length * 2}시간`, // 예시 계산식
+      description: '직접 검토 대비',
       descriptionClass: 'text-slate-500',
       icon: <Clock size={20} className="text-violet-600" />,
       iconBg: 'bg-violet-50',
@@ -169,32 +139,22 @@ export function Home() {
                           'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
                       }}
                     >
-                      <span className="whitespace-nowrap">계약서 업로드</span>
-                      <ArrowRight size={17} className="shrink-0" />
+                      <span>계약서 업로드</span>
+                      <ArrowRight size={17} />
                     </button>
                   </div>
                 </div>
 
                 <div className="hidden lg:grid gap-4">
                   {stats.map((stat) => (
-                    <div
-                      key={stat.id}
-                      className="rounded-[20px] bg-white/90 p-5 shadow-sm"
-                    >
+                    <div key={stat.id} className="rounded-[20px] bg-white/90 p-5 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm text-slate-500">{stat.label}</p>
-                          <h3 className="mt-2 text-2xl font-semibold text-slate-900">
-                            {stat.value}
-                          </h3>
-                          <p className={`mt-2 text-sm ${stat.descriptionClass}`}>
-                            {stat.description}
-                          </p>
+                          <h3 className="mt-2 text-2xl font-semibold text-slate-900">{stat.value}</h3>
+                          <p className={`mt-2 text-sm ${stat.descriptionClass}`}>{stat.description}</p>
                         </div>
-
-                        <div
-                          className={`flex h-11 w-11 items-center justify-center rounded-2xl ${stat.iconBg}`}
-                        >
+                        <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${stat.iconBg}`}>
                           {stat.icon}
                         </div>
                       </div>
@@ -204,112 +164,49 @@ export function Home() {
               </div>
             </section>
 
-            <section className="mt-4 sm:mt-5 md:mt-6">
-              <div className="lg:hidden">
-                <div className="-mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                  <div className="flex gap-3 pb-2 sm:gap-4">
-                    {stats.map((stat) => (
+            {/* 하단 계약서 목록 섹션 */}
+            <section className="mt-6">
+              <div className="rounded-[22px] bg-white/92 p-5 shadow-sm sm:rounded-[24px] sm:p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">최근 문서</h2>
+                  <button className="text-sm font-medium text-[#667AF2]">전체보기</button>
+                </div>
+
+                <div className="space-y-3">
+                  {contracts.length > 0 ? (
+                    contracts.map((doc) => (
                       <div
-                        key={stat.id}
-                        className="min-w-[240px] max-w-[240px] rounded-[18px] bg-white/92 p-4 shadow-sm sm:min-w-[260px] sm:max-w-[260px] sm:rounded-[20px] sm:p-5"
+                        key={doc.id}
+                        onClick={() => navigate(`/result/${doc.id}`)}
+                        className="cursor-pointer rounded-[16px] bg-[#F8FAFF] p-4 transition hover:bg-[#F2F6FF] sm:p-5"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm text-slate-500">{stat.label}</p>
-                            <h3 className="mt-2 text-xl font-semibold text-slate-900 sm:text-2xl">
-                              {stat.value}
+                          <div className="min-w-0">
+                            <h3 className="truncate text-sm font-semibold text-slate-900 sm:text-base">
+                              {doc.title || '제목 없는 문서'}
                             </h3>
-                            <p className={`mt-2 text-sm ${stat.descriptionClass}`}>
-                              {stat.description}
+                            <p className="mt-1 text-xs text-slate-500 sm:text-sm">
+                              {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : '날짜 정보 없음'}
                             </p>
+                            <div className="mt-3 flex items-center gap-2">
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                                doc.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'
+                              }`}>
+                                {doc.status === 'completed' ? '분석 완료' : '분석 중'}
+                              </span>
+                            </div>
                           </div>
-
-                          <div
-                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${stat.iconBg}`}
-                          >
-                            {stat.icon}
+                          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#667AF2] to-[#8097F8]">
+                            <FileText size={18} className="text-white" />
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="hidden lg:grid lg:grid-cols-3 lg:gap-4">
-                {stats.map((stat) => (
-                  <div
-                    key={stat.id}
-                    className="rounded-[20px] bg-white/92 p-5 shadow-sm"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm text-slate-500">{stat.label}</p>
-                        <h3 className="mt-2 text-2xl font-semibold text-slate-900">
-                          {stat.value}
-                        </h3>
-                        <p className={`mt-2 text-sm ${stat.descriptionClass}`}>
-                          {stat.description}
-                        </p>
-                      </div>
-
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${stat.iconBg}`}
-                      >
-                        {stat.icon}
-                      </div>
+                    ))
+                  ) : (
+                    <div className="py-12 text-center text-slate-400">
+                      최근 분석한 문서가 없습니다.
                     </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="mt-4 sm:mt-5 md:mt-6">
-              <div className="rounded-[22px] bg-white/92 p-5 shadow-sm sm:rounded-[24px] sm:p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">
-                    최근 문서
-                  </h2>
-                  <button className="text-sm font-medium text-[#667AF2]">
-                    전체보기
-                  </button>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  {recentDocuments.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="rounded-[16px] bg-[#F8FAFF] p-4 transition hover:bg-[#F2F6FF] sm:p-5"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h3 className="truncate text-sm font-semibold text-slate-900 sm:text-base">
-                            {doc.title}
-                          </h3>
-                          <p className="mt-1 text-xs text-slate-500 sm:text-sm">
-                            {doc.date}
-                          </p>
-
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${doc.statusStyle}`}
-                            >
-                              {doc.status}
-                            </span>
-                            <span className="text-xs text-slate-400">
-                              {doc.timeAgo}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${doc.iconStyle}`}
-                        >
-                          <FileText size={18} className="text-white" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </section>
