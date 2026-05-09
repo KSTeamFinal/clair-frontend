@@ -52,7 +52,7 @@ export function Loading() {
         // ✅ 분석 시작 요청 API
         // 프론트는 /analyze가 아니라 /request-analysis를 호출해야 함
         await client.post(
-          `/api/v1/contracts/${contractId}/request-analysis`,
+          `/api/v1/contracts/${contractId}/analyze`,
           {},
           {
             timeout: 300000,
