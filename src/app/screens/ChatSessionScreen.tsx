@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ChevronLeft, MessageCircle, Plus, Search, Send,
-  Trash2, Clock3, ChevronRight, ChevronDown, X, Loader2, FileText,
+  ChevronLeft, MessageCircle, Search, Send,
+  Trash2, Clock3, ChevronRight, ChevronDown, X, Loader2,
 } from 'lucide-react';
 import client from '../../api/client';
 
@@ -25,13 +25,6 @@ type Session = {
   preview: string;
   messages: Message[];
   messagesLoaded: boolean;
-};
-
-type Contract = {
-  id: number;
-  original_filename: string;
-  contract_type: string;
-  created_at: string;
 };
 
 // ── 유틸 ──────────────────────────────────────────────────────────────────────
@@ -121,12 +114,6 @@ export default function ChatSessionScreen() {
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 계약서 선택 모달
-  const [showContractModal, setShowContractModal] = useState(false);
-  const [contracts, setContracts] = useState<Contract[]>([]);
-  const [isLoadingContracts, setIsLoadingContracts] = useState(false);
-  const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
-
   // ── 세션 목록 로드 ────────────────────────────────────────────────────────
 
   const loadSessions = async () => {
@@ -189,54 +176,6 @@ export default function ChatSessionScreen() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [sessions, selectedSessionId]);
-
-  // ── 계약서 목록 로드 (모달용) ─────────────────────────────────────────────
-
-  const openContractModal = async () => {
-    setShowContractModal(true);
-    setSelectedContractId(null);
-    setIsLoadingContracts(true);
-    try {
-      const res = await client.get('/api/v1/contracts/');
-      const list = (res.data?.contracts || []).filter(
-        (c: any) => c.status?.toLowerCase() === 'completed'
-      );
-      setContracts(list);
-    } catch (e) {
-      console.error('계약서 목록 로드 실패:', e);
-    } finally {
-      setIsLoadingContracts(false);
-    }
-  };
-
-  // ── 세션 생성 ─────────────────────────────────────────────────────────────
-
-  const handleCreateSession = async () => {
-    setShowContractModal(false);
-    try {
-      const body: any = { title: '새 대화' };
-      if (selectedContractId) body.contract_id = selectedContractId;
-
-      const res = await client.post('/api/v1/chat/sessions', body);
-      const s = res.data;
-      const newSession: Session = {
-        id: s.id,
-        title: s.title,
-        contract_id: s.contract_id ?? null,
-        createdAt: formatDate(s.created_at),
-        updatedAt: formatDate(s.updated_at),
-        messageCount: 0,
-        preview: '새로운 상담을 시작해보세요.',
-        messages: [],
-        messagesLoaded: true,
-      };
-      setSessions((prev) => [newSession, ...prev]);
-      setSelectedSessionId(newSession.id);
-      setDetailOpen(true);
-    } catch (e) {
-      console.error('세션 생성 실패:', e);
-    }
-  };
 
   // ── 세션 삭제 ─────────────────────────────────────────────────────────────
 
@@ -365,12 +304,7 @@ export default function ChatSessionScreen() {
                 </button>
 
                 <div className={`${listOpen ? 'block' : 'hidden'} mt-3 lg:mt-0 lg:block`}>
-                  <button type="button" onClick={openContractModal}
-                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#5B72D6] bg-[#6C80DD] px-4 text-[12px] font-semibold text-white shadow-md transition hover:opacity-90 sm:w-auto sm:min-w-[108px] sm:text-[13px]">
-                    <Plus className="h-4 w-4" strokeWidth={2.4} />새 세션
-                  </button>
-
-                  <div className="relative mt-3">
+                  <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input value={search} onChange={(e) => setSearch(e.target.value)}
                       placeholder="세션 제목이나 내용 검색"
@@ -515,74 +449,6 @@ export default function ChatSessionScreen() {
           </div>
         </main>
       </div>
-
-      {/* 계약서 선택 모달 */}
-      {showContractModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-[420px] rounded-2xl bg-white p-5 shadow-lg">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
-                <h2 className="text-[16px] font-semibold text-slate-900">계약서 선택</h2>
-                <p className="mt-1 text-[13px] text-slate-500">
-                  질문할 계약서를 선택하면 AI가 해당 내용을 기반으로 답변해요.
-                </p>
-              </div>
-              <button type="button" onClick={() => setShowContractModal(false)} className="text-slate-400 hover:text-slate-700">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-2 max-h-[280px] overflow-y-auto">
-              {isLoadingContracts ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-[#6C80DD]" />
-                </div>
-              ) : contracts.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-[13px] text-slate-400">
-                  분석 완료된 계약서가 없어요.<br />
-                  계약서를 업로드하고 분석을 완료해주세요.
-                </div>
-              ) : (
-                contracts.map((c) => (
-                  <button key={c.id} type="button"
-                    onClick={() => setSelectedContractId(c.id)}
-                    className={`w-full flex items-center gap-3 rounded-xl border p-3 text-left transition ${
-                      selectedContractId === c.id
-                        ? 'border-[#667AF2] bg-[#EEF3FF]'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
-                    }`}>
-                    <div className="h-9 w-9 shrink-0 flex items-center justify-center rounded-xl bg-[#EEF2F9]">
-                      <FileText size={16} className="text-[#6C80DD]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold text-slate-800">{c.original_filename}</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">{c.contract_type !== 'UNKNOWN' ? c.contract_type : '계약서'}</p>
-                    </div>
-                    {selectedContractId === c.id && (
-                      <div className="h-5 w-5 shrink-0 rounded-full bg-[#667AF2] flex items-center justify-center">
-                        <span className="text-white text-[10px] font-bold">✓</span>
-                      </div>
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
-
-            <div className="mt-4 flex gap-2">
-              <button type="button" onClick={() => setShowContractModal(false)}
-                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-[13px] font-semibold text-slate-600">
-                취소
-              </button>
-              <button type="button" onClick={handleCreateSession}
-                disabled={contracts.length > 0 && !selectedContractId}
-                className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold text-white transition disabled:opacity-40"
-                style={{ background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)' }}>
-                {selectedContractId ? '선택한 계약서로 시작' : '계약서 없이 시작'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 삭제 확인 모달 */}
       {showDeleteModal && (
