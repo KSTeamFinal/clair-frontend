@@ -269,6 +269,16 @@ export function Loading() {
                           }}
                         />
                       </div>
+
+                      {currentStep >= steps.length - 2 && progress < 100 && (
+                        <div className="mt-3 flex items-start gap-2 rounded-[14px] bg-amber-50 px-3 py-2.5">
+                          <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-amber-500" />
+                          <p className="text-[12px] leading-5 text-amber-700">
+                            AI가 계약서를 꼼꼼히 검토하고 있어요.<br />
+                            문서 길이에 따라 1~2분 소요될 수 있으니 창을 닫지 마세요.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -328,6 +338,15 @@ export function Loading() {
               </div>
 
               <p className="mt-3 text-[13px] text-slate-500">{Math.round(progress)}%</p>
+
+              {currentStep >= steps.length - 2 && progress < 100 && (
+                <div className="mt-4 flex items-start gap-2 rounded-[14px] bg-amber-50 px-3 py-2.5 text-left">
+                  <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-amber-500" />
+                  <p className="text-[12px] leading-5 text-amber-700">
+                    AI가 계약서를 꼼꼼히 검토하고 있어요. 문서 길이에 따라 1~2분 소요될 수 있으니 창을 닫지 마세요.
+                  </p>
+                </div>
+              )}
             </div>
           </section>
         </main>
