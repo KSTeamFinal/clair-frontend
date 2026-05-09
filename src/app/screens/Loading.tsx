@@ -88,34 +88,24 @@ export function Loading() {
 
             const status = data.status?.toLowerCase();
 
-            if (
-              status === 'completed' ||
-              status === 'success' ||
-              data.safety_score !== undefined
-            ) {
-              if (pollInterval) {
-                clearInterval(pollInterval);
-              }
-
+            if (status === 'completed' || status === 'success') {
+              if (pollInterval) clearInterval(pollInterval);
               timers.forEach((timer) => window.clearTimeout(timer));
-
               setCurrentStep(steps.length - 1);
-
               setMessages((prev) => {
                 if (prev.some((m) => m.text.includes('결과 화면으로 이동'))) return prev;
-
-                return [
-                  ...prev,
-                  {
-                    role: 'bot',
-                    text: '분석이 완료되었어요. 결과 화면으로 이동할게요.',
-                  },
-                ];
+                return [...prev, { role: 'bot', text: '분석이 완료되었어요. 결과 화면으로 이동할게요.' }];
               });
-
               window.setTimeout(() => {
                 navigate(`/result/${contractId}`, { replace: true });
               }, 1500);
+            } else if (status === 'failed') {
+              if (pollInterval) clearInterval(pollInterval);
+              timers.forEach((timer) => window.clearTimeout(timer));
+              setMessages((prev) => [
+                ...prev,
+                { role: 'bot', text: `분석 중 오류가 발생했어요. 홈으로 돌아가 다시 시도해주세요.\n원인: ${data.analysis_error || '알 수 없는 오류'}` },
+              ]);
             }
           } catch (error) {
             console.error('상태 확인 실패 (폴링 중):', error);
