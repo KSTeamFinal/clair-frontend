@@ -46,12 +46,17 @@ export function Home() {
     fetchData();
   }, []);
 
-  // 상단 통계 수치 (백엔드 데이터에 따라 나중에 value를 변수로 바꿀 수 있습니다)
+  const completedCount = contracts.filter(
+    (c) => c.status?.toLowerCase() === 'completed'
+  ).length;
+  const completionRate =
+    contracts.length > 0 ? Math.round((completedCount / contracts.length) * 100) : 0;
+
   const stats = [
     {
       id: 1,
       label: '총 분석 건수',
-      value: contracts.length.toString(), // 실제 데이터 개수 반영
+      value: contracts.length.toString(),
       description: '업로드된 전체 문서',
       descriptionClass: 'text-emerald-600',
       icon: <FileText size={20} className="text-[#6C80DD]" />,
@@ -59,9 +64,9 @@ export function Home() {
     },
     {
       id: 2,
-      label: '계약 안정도',
-      value: '85%',
-      description: '최근 분석 문서 평균',
+      label: '분석 완료율',
+      value: contracts.length > 0 ? `${completionRate}%` : '-',
+      description: `완료 ${completedCount} / 전체 ${contracts.length}건`,
       descriptionClass: 'text-slate-500',
       icon: <ShieldCheck size={20} className="text-sky-600" />,
       iconBg: 'bg-sky-50',
@@ -69,7 +74,7 @@ export function Home() {
     {
       id: 3,
       label: 'AI로 절약한 시간',
-      value: `${contracts.length * 2}시간`, // 예시 계산식
+      value: completedCount > 0 ? `${completedCount * 2}시간` : '-',
       description: '직접 검토 대비',
       descriptionClass: 'text-slate-500',
       icon: <Clock size={20} className="text-violet-600" />,
