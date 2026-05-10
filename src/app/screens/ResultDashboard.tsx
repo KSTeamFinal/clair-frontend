@@ -7,6 +7,8 @@ import {
   CheckCircle,
   Bot,
   Send,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 
 type MessageType = 'text' | 'score' | 'summary' | 'risks';
@@ -37,8 +39,37 @@ export function ResultDashboard() {
   const [loading, setLoading] = useState(true);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const chatSessionId = useRef<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
+
+  const toggleSTT = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('이 브라우저는 음성 인식을 지원하지 않아요. Chrome을 사용해주세요.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ko-KR';
+    recognition.interimResults = false;
+    recognition.onresult = (e: any) => {
+      const transcript = e.results[0][0].transcript;
+      setInputMessage((prev) => (prev ? prev + ' ' + transcript : transcript));
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  };
 
   // 분석 결과 로드
   useEffect(() => {
@@ -273,12 +304,22 @@ export function ResultDashboard() {
               </div>
 
               {/* 추천 질문 */}
-              <div className="px-5 pt-3 flex gap-2 flex-wrap">
+              <div style={{ padding: '12px 20px 4px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {['계약 기간이 얼마야?', '주요 위험 조항 알려줘', '급여 조건 설명해줘'].map((q) => (
                   <button
                     key={q}
                     onClick={() => handleSendMessage(q)}
-                    className="text-xs px-3 py-1.5 rounded-full border border-[#667AF2] text-[#667AF2] hover:bg-[#EEF3FF] transition-colors"
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 500,
+                      padding: '7px 16px',
+                      borderRadius: 20,
+                      border: 'none',
+                      background: '#EEF3FF',
+                      color: '#5569E0',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 4px rgba(102,122,242,0.10)',
+                    }}
                   >
                     {q}
                   </button>
@@ -291,14 +332,33 @@ export function ResultDashboard() {
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                    placeholder="조항에 대해 질문하세요..."
+                    placeholder={isListening ? '듣고 있어요...' : '조항에 대해 질문하세요...'}
                     className="flex-1 h-12 px-5 rounded-2xl border border-slate-200 outline-none focus:border-[#667AF2] bg-white transition-all"
                     disabled={isSending}
                   />
                   <button
+                    onClick={toggleSTT}
+                    title="음성으로 입력"
+                    style={{
+                      width: 48, height: 48, borderRadius: 16, border: 'none', flexShrink: 0,
+                      background: isListening ? '#EF4444' : '#F1F5F9',
+                      color: isListening ? '#fff' : '#64748B',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'background 0.2s',
+                    }}
+                  >
+                    {isListening ? <MicOff size={20} /> : <Mic size={20} />}
+                  </button>
+                  <button
                     onClick={() => handleSendMessage()}
                     disabled={isSending}
-                    className="h-12 w-12 flex items-center justify-center bg-[#667AF2] text-white rounded-2xl hover:bg-[#5569E0] transition-colors disabled:opacity-50"
+                    style={{
+                      width: 48, height: 48, borderRadius: 16, border: 'none', flexShrink: 0,
+                      background: '#667AF2', color: '#fff', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      opacity: isSending ? 0.5 : 1,
+                    }}
                   >
                     <Send size={20} />
                   </button>
