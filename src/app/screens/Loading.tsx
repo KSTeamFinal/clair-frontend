@@ -52,7 +52,7 @@ export function Loading() {
         // ✅ 분석 시작 요청 API
         // 프론트는 /analyze가 아니라 /request-analysis를 호출해야 함
         await client.post(
-          `/api/v1/contracts/${contractId}/analyze`,
+          `/api/v1/contracts/${contractId}/request-analysis`,
           {},
           {
             timeout: 300000,
@@ -88,24 +88,34 @@ export function Loading() {
 
             const status = data.status?.toLowerCase();
 
-            if (status === 'completed' || status === 'success') {
-              if (pollInterval) clearInterval(pollInterval);
+            if (
+              status === 'completed' ||
+              status === 'success' ||
+              data.safety_score !== undefined
+            ) {
+              if (pollInterval) {
+                clearInterval(pollInterval);
+              }
+
               timers.forEach((timer) => window.clearTimeout(timer));
+
               setCurrentStep(steps.length - 1);
+
               setMessages((prev) => {
                 if (prev.some((m) => m.text.includes('결과 화면으로 이동'))) return prev;
-                return [...prev, { role: 'bot', text: '분석이 완료되었어요. 결과 화면으로 이동할게요.' }];
+
+                return [
+                  ...prev,
+                  {
+                    role: 'bot',
+                    text: '분석이 완료되었어요. 결과 화면으로 이동할게요.',
+                  },
+                ];
               });
+
               window.setTimeout(() => {
                 navigate(`/result/${contractId}`, { replace: true });
               }, 1500);
-            } else if (status === 'failed') {
-              if (pollInterval) clearInterval(pollInterval);
-              timers.forEach((timer) => window.clearTimeout(timer));
-              setMessages((prev) => [
-                ...prev,
-                { role: 'bot', text: `분석 중 오류가 발생했어요. 홈으로 돌아가 다시 시도해주세요.\n원인: ${data.analysis_error || '알 수 없는 오류'}` },
-              ]);
             }
           } catch (error) {
             console.error('상태 확인 실패 (폴링 중):', error);
@@ -269,16 +279,6 @@ export function Loading() {
                           }}
                         />
                       </div>
-
-                      {currentStep >= steps.length - 2 && progress < 100 && (
-                        <div className="mt-3 flex items-start gap-2 rounded-[14px] bg-amber-50 px-3 py-2.5">
-                          <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-amber-500" />
-                          <p className="text-[12px] leading-5 text-amber-700">
-                            AI가 계약서를 꼼꼼히 검토하고 있어요.<br />
-                            문서 길이에 따라 1~2분 소요될 수 있으니 창을 닫지 마세요.
-                          </p>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -338,15 +338,6 @@ export function Loading() {
               </div>
 
               <p className="mt-3 text-[13px] text-slate-500">{Math.round(progress)}%</p>
-
-              {currentStep >= steps.length - 2 && progress < 100 && (
-                <div className="mt-4 flex items-start gap-2 rounded-[14px] bg-amber-50 px-3 py-2.5 text-left">
-                  <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-amber-500" />
-                  <p className="text-[12px] leading-5 text-amber-700">
-                    AI가 계약서를 꼼꼼히 검토하고 있어요. 문서 길이에 따라 1~2분 소요될 수 있으니 창을 닫지 마세요.
-                  </p>
-                </div>
-              )}
             </div>
           </section>
         </main>
