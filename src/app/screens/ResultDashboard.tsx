@@ -72,6 +72,8 @@ export function ResultDashboard() {
   };
 
   // 분석 결과 로드
+  // src/pages/ResultDashboard.tsx 내부 useEffect 수정
+
   useEffect(() => {
     const fetchAnalysisResult = async () => {
       if (!contractId) return;
@@ -81,24 +83,35 @@ export function ResultDashboard() {
         const data = response.data;
         setAnalysisData(data);
 
-        const score = computeSafetyScore(data.risk_clauses || []);
+        // 1. 점수 및 요약 데이터 추출 (백엔드 구조에 맞춰 접근)
+        const score = data.analysis?.total_score || computeSafetyScore(data.risk_clauses || []);
         const scoreLabel = score >= 80 ? '안정적' : score >= 60 ? '확인 필요' : '주의 필요';
         const summary = data.analysis?.summary || '';
+        const keyInfo = data.analysis?.key_info || {};
+
+        // 2. 화면에 보여줄 주요 정보 텍스트 구성
+        const infoText = `
+  📌 **주요 계약 정보**
+  • 계약 종류: ${keyInfo.contract_type || '미탐지'}
+  • 계약 기간: ${keyInfo.start_date || '-'} ~ ${keyInfo.end_date || '-'}
+  • 주요 금액: ${keyInfo.amount_text || '정보 없음'}
+        `.trim();
 
         setAnalysisMessages([
           { role: 'bot', text: '분석이 완료되었어요.', type: 'text' },
           { role: 'bot', text: '', type: 'score' },
           {
             role: 'bot',
-            text: `계약 안정도는 ${score}점(${scoreLabel})입니다.${summary ? '\n\n' + summary : ''}`,
+            // 요약 내용과 주요 정보를 합쳐서 출력
+            text: `${infoText}\n\n계약 안정도는 ${score}점(${scoreLabel})입니다.\n\n${summary}`,
             type: 'text',
           },
           { role: 'bot', text: '', type: 'risks' },
-          { role: 'bot', text: '궁금한 점이 있으면 질문해주세요.', type: 'text' },
+          { role: 'bot', text: '궁금한 점이 있으면 아래 채팅창에 물어보세요!', type: 'text' },
         ]);
 
         setChatMessages([
-          { role: 'bot', text: '안녕하세요! 계약서에 대해 궁금한 점을 물어보세요.', type: 'text' },
+          { role: 'bot', text: '안녕하세요! 분석된 내용을 바탕으로 궁금한 점을 질문해주세요.', type: 'text' },
         ]);
       } catch (error) {
         console.error('데이터 로드 실패:', error);
