@@ -1,373 +1,230 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState, type ChangeEvent, type DragEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { PDFDocument } from 'pdf-lib';
 import client from '../../api/client';
-import {
-  ArrowLeft,
-  AlertTriangle,
-  CheckCircle,
-  Bot,
-  Send,
-  Mic,
-  MicOff,
-} from 'lucide-react';
-
-type MessageType = 'text' | 'score' | 'summary' | 'risks';
-type Role = 'bot' | 'user';
-
-type Message = {
-  role: Role;
-  text: string;
-  type: MessageType;
-};
-
-// 백엔드 risk_level(high/medium/low) → 안정도 점수 계산
-function computeSafetyScore(riskClauses: any[]): number {
-  if (!riskClauses || riskClauses.length === 0) return 90;
-  const levels = riskClauses.map((r) => r.risk_level?.toLowerCase());
-  if (levels.includes('high')) return 42;
-  if (levels.includes('medium')) return 65;
-  return 80;
-}
+import { X, Image as ImageIcon, Bot } from 'lucide-react';
 
 export function ResultDashboard() {
   const navigate = useNavigate();
-  const { contractId } = useParams<{ contractId: string }>();
 
-  const [analysisData, setAnalysisData] = useState<any>(null);
-  const [analysisMessages, setAnalysisMessages] = useState<Message[]>([]);
-  const [chatMessages, setChatMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [inputMessage, setInputMessage] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const chatSessionId = useRef<number | null>(null);
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
 
-  const toggleSTT = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert('이 브라우저는 음성 인식을 지원하지 않아요. Chrome을 사용해주세요.');
-      return;
-    }
+  const isAllowedFile = (file: File) => {
+    const name = file.name.toLowerCase();
 
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'ko-KR';
-    recognition.interimResults = false;
-    recognition.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript;
-      setInputMessage((prev) => (prev ? prev + ' ' + transcript : transcript));
-    };
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsListening(true);
+    return (
+      file.type === 'application/pdf' ||
+      file.type === 'image/png' ||
+      file.type === 'image/jpeg' ||
+      name.endsWith('.pdf') ||
+      name.endsWith('.png') ||
+      name.endsWith('.jpg') ||
+      name.endsWith('.jpeg')
+    );
   };
 
-  // 분석 결과 로드
-  useEffect(() => {
-    const fetchAnalysisResult = async () => {
-      if (!contractId) return;
-      try {
-        setLoading(true);
-        const response = await client.get(`/api/v1/contracts/${contractId}`);
-        const data = response.data;
-        setAnalysisData(data);
+  const addFiles = (files: File[]) => {
+    const validFiles = files.filter(isAllowedFile);
 
-        const score = computeSafetyScore(data.risk_clauses || []);
-        const scoreLabel = score >= 80 ? '안정적' : score >= 60 ? '확인 필요' : '주의 필요';
-        const summary = data.analysis?.summary || '';
+    if (validFiles.length === 0) {
+      alert('PDF, JPG, PNG 파일만 업로드할 수 있어요.');
+      return;
+    }
 
-        setAnalysisMessages([
-          { role: 'bot', text: '분석이 완료되었어요.', type: 'text' },
-          { role: 'bot', text: '', type: 'score' },
-          {
-            role: 'bot',
-            text: `계약 안정도는 ${score}점(${scoreLabel})입니다.${summary ? '\n\n' + summary : ''}`,
-            type: 'text',
-          },
-          { role: 'bot', text: '', type: 'risks' },
-          { role: 'bot', text: '궁금한 점이 있으면 질문해주세요.', type: 'text' },
-        ]);
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
+  };
 
-        setChatMessages([
-          { role: 'bot', text: '안녕하세요! 계약서에 대해 궁금한 점을 물어보세요.', type: 'text' },
-        ]);
-      } catch (error) {
-        console.error('데이터 로드 실패:', error);
-      } finally {
-        setLoading(false);
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    addFiles(files);
+    e.target.value = '';
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    addFiles(files);
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const mergeFilesToPdf = async (files: File[]) => {
+    const mergedPdf = await PDFDocument.create();
+
+    for (const file of files) {
+      const bytes = await file.arrayBuffer();
+      const name = file.name.toLowerCase();
+
+      if (file.type === 'application/pdf' || name.endsWith('.pdf')) {
+        const pdf = await PDFDocument.load(bytes);
+        const copiedPages = await mergedPdf.copyPages(
+          pdf,
+          pdf.getPageIndices()
+        );
+
+        copiedPages.forEach((page) => mergedPdf.addPage(page));
+      } else {
+        let image;
+
+        if (
+          file.type === 'image/png' ||
+          name.endsWith('.png')
+        ) {
+          image = await mergedPdf.embedPng(bytes);
+        } else {
+          image = await mergedPdf.embedJpg(bytes);
+        }
+
+        const pageWidth = 595.28;
+        const pageHeight = 841.89;
+        const margin = 40;
+
+        const scale = Math.min(
+          (pageWidth - margin * 2) / image.width,
+          (pageHeight - margin * 2) / image.height
+        );
+
+        const imageWidth = image.width * scale;
+        const imageHeight = image.height * scale;
+
+        const page = mergedPdf.addPage([pageWidth, pageHeight]);
+
+        page.drawImage(image, {
+          x: (pageWidth - imageWidth) / 2,
+          y: (pageHeight - imageHeight) / 2,
+          width: imageWidth,
+          height: imageHeight,
+        });
       }
-    };
-    fetchAnalysisResult();
-  }, [contractId]);
-
-  // 채팅 세션 생성 (첫 메시지 전송 시 lazily 생성)
-  const ensureChatSession = async (): Promise<number | null> => {
-    if (chatSessionId.current) return chatSessionId.current;
-    try {
-      const res = await client.post('/api/v1/chat/sessions', {
-        contract_id: contractId ? Number(contractId) : null,
-        title: `계약서 #${contractId} 질문`,
-      });
-      chatSessionId.current = res.data.id;
-      return res.data.id;
-    } catch (e) {
-      console.error('채팅 세션 생성 실패:', e);
-      return null;
     }
+
+    const mergedBytes = await mergedPdf.save();
+
+    return new File([mergedBytes], 'merged-contract.pdf', {
+      type: 'application/pdf',
+    });
   };
 
-  const handleSendMessage = async (preset?: string) => {
-    const messageToSend = (preset ?? inputMessage).trim();
-    if (!messageToSend || isSending) return;
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) return;
 
-    setChatMessages((prev) => [...prev, { role: 'user', text: messageToSend, type: 'text' }]);
-    setInputMessage('');
-    setIsSending(true);
+    setIsUploading(true);
 
     try {
-      const sessionId = await ensureChatSession();
-      if (!sessionId) throw new Error('세션 없음');
+      const uploadFile =
+        selectedFiles.length === 1
+          ? selectedFiles[0]
+          : await mergeFilesToPdf(selectedFiles);
 
-      const res = await client.post(`/api/v1/chat/sessions/${sessionId}/messages`, {
-        content: messageToSend,
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+
+      const response = await client.post('/api/v1/contracts/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
-      const aiContent = res.data.ai_message?.content || '답변을 가져오지 못했습니다.';
-      setChatMessages((prev) => [...prev, { role: 'bot', text: aiContent, type: 'text' }]);
-    } catch {
-      setChatMessages((prev) => [
-        ...prev,
-        { role: 'bot', text: '답변을 가져오는 중 오류가 발생했습니다.', type: 'text' },
-      ]);
+      const contractId = response.data.id || response.data.contractId;
+
+      navigate(`/analysis/${contractId}`);
+    } catch (err) {
+      console.error(err);
+      alert('업로드 실패');
     } finally {
-      setIsSending(false);
-      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      setIsUploading(false);
     }
   };
-
-  const safetyScore = computeSafetyScore(analysisData?.risk_clauses || []);
-  const scoreLabel = safetyScore >= 80 ? '안정적' : safetyScore >= 60 ? '확인 필요' : '주의 필요';
-
-  const ScoreRing = ({ score }: { score: number }) => {
-    const size = 128;
-    const strokeWidth = 16;
-    const radius = (size - strokeWidth) / 2;
-    const circumference = 2 * Math.PI * radius;
-    const dashOffset = circumference * (1 - score / 100);
-    return (
-      <div className="shrink-0" style={{ width: size, height: size }}>
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          <circle cx={64} cy={64} r={radius} fill="none" stroke="#E5E7EB" strokeWidth={strokeWidth} />
-          <circle cx={64} cy={64} r={radius} fill="none" stroke="#6C80DD" strokeWidth={strokeWidth}
-            strokeDasharray={circumference} strokeDashoffset={dashOffset}
-            strokeLinecap="round" transform="rotate(-90 64 64)" />
-          <text x="50%" y="45%" textAnchor="middle" fill="#0F172A" fontSize="30" fontWeight="600">{score}</text>
-          <text x="50%" y="65%" textAnchor="middle" fill="#64748B" fontSize="12">점</text>
-        </svg>
-      </div>
-    );
-  };
-
-  const riskLevelColor = (level: string) => {
-    switch (level?.toLowerCase()) {
-      case 'high': return 'text-red-500';
-      case 'medium': return 'text-amber-500';
-      default: return 'text-blue-400';
-    }
-  };
-
-  const riskLevelLabel = (level: string) => {
-    switch (level?.toLowerCase()) {
-      case 'high': return '높음';
-      case 'medium': return '중간';
-      default: return '낮음';
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-[#667AF2] border-t-transparent mx-auto"></div>
-          <p className="mt-4 text-slate-600 font-medium">데이터를 불러오는 중입니다...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
-      <div className="mx-auto max-w-[1280px] px-6">
-        <header className="flex h-20 items-center justify-between">
-          <button onClick={() => navigate('/home')} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors">
-            <ArrowLeft size={20} /> <span className="font-medium">뒤로</span>
-          </button>
-          <h1 className="text-2xl font-bold tracking-widest text-slate-800">CLAIR.</h1>
-          <div className="w-20" />
-        </header>
+    <div className="flex min-h-screen justify-center bg-[#F8FAFC] p-10">
+      <div className="flex h-[800px] w-full max-w-6xl gap-6">
+        <div className="flex w-1/2 flex-col rounded-[40px] border border-slate-100 bg-white p-8 shadow-sm">
+          <h2 className="mb-6 text-2xl font-bold text-slate-900">
+            계약서 업로드
+          </h2>
 
-        <main className="mt-10 pb-20">
-          <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-10">
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDrop}
+            className="mb-6 rounded-3xl border-2 border-dashed border-blue-200 bg-blue-50 p-6 text-center"
+          >
+            <p className="mb-3 font-bold text-[#667AF2]">
+              이미지/PDF 파일 선택 또는 드래그
+            </p>
 
-            {/* 왼쪽: 분석 리포트 */}
-            <div className="space-y-6 overflow-y-auto max-h-[80vh] pr-2">
-              {analysisMessages.map((msg, idx) => (
-                <div key={idx} className="flex gap-4">
-                  {msg.role === 'bot' && (
-                    <div className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl bg-[#667AF2] text-white shadow-sm">
-                      <Bot size={22} />
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    {msg.type === 'text' && msg.text && (
-                      <div className="p-5 bg-white rounded-2xl shadow-sm border border-slate-100 text-slate-700 leading-relaxed whitespace-pre-line">
-                        {msg.text}
-                      </div>
-                    )}
-                    {msg.type === 'score' && (
-                      <div className="p-8 bg-white rounded-[28px] shadow-sm border border-slate-100 flex items-center gap-10">
-                        <ScoreRing score={safetyScore} />
-                        <div>
-                          <p className="text-sm font-medium text-slate-500 mb-1">계약 안정도 분석</p>
-                          <h3 className="text-2xl font-bold text-slate-900">{scoreLabel}</h3>
-                          <p className="text-sm text-slate-400 mt-1">
-                            위험 조항 {(analysisData?.risk_clauses || []).length}개 감지됨
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    {msg.type === 'risks' && (
-                      <div className="space-y-3">
-                        {(analysisData?.risk_clauses || []).length === 0 ? (
-                          <div className="p-4 bg-white border border-slate-100 rounded-xl flex gap-3 shadow-sm">
-                            <CheckCircle className="text-emerald-500 shrink-0" size={20} />
-                            <p className="text-sm text-slate-600">특별한 위험 조항이 감지되지 않았습니다.</p>
-                          </div>
-                        ) : (
-                          (analysisData?.risk_clauses || []).map((risk: any, i: number) => (
-                            <div key={i} className="p-4 bg-white border border-slate-100 rounded-xl flex gap-3 shadow-sm">
-                              <AlertTriangle className={`shrink-0 ${riskLevelColor(risk.risk_level)}`} size={20} />
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-bold text-slate-900 text-sm">{risk.risk_type}</p>
-                                  <span className={`text-xs font-medium ${riskLevelColor(risk.risk_level)}`}>
-                                    [{riskLevelLabel(risk.risk_level)}]
-                                  </span>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-1">{risk.explanation}</p>
-                                {risk.evidence_text && (
-                                  <p className="text-xs text-slate-400 mt-1 italic">"{risk.evidence_text}"</p>
-                                )}
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+              onChange={handleFileChange}
+              className="block w-full cursor-pointer rounded-xl bg-white p-3 text-sm text-slate-600"
+            />
 
-            {/* 오른쪽: 실시간 채팅 */}
-            <div className="flex flex-col h-[75vh] bg-white rounded-[32px] shadow-xl border border-slate-100 overflow-hidden">
-              <div className="bg-slate-50/50 px-6 py-5 border-b flex items-center gap-3">
-                <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                <span className="font-bold text-slate-700">AI 계약 상담소</span>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {chatMessages.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] p-4 rounded-2xl text-[15px] shadow-sm whitespace-pre-line ${
-                      msg.role === 'user' ? 'bg-[#6C80DD] text-white' : 'bg-slate-100 text-slate-800'
-                    }`}>
-                      {msg.text}
-                    </div>
-                  </div>
-                ))}
-                {isSending && (
-                  <div className="flex justify-start">
-                    <div className="bg-slate-100 text-slate-400 p-4 rounded-2xl text-sm">답변 생성 중...</div>
-                  </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-
-              {/* 추천 질문 */}
-              <div style={{ padding: '12px 20px 4px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {['계약 기간이 얼마야?', '주요 위험 조항 알려줘', '급여 조건 설명해줘'].map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => handleSendMessage(q)}
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      padding: '7px 16px',
-                      borderRadius: 20,
-                      border: 'none',
-                      background: '#EEF3FF',
-                      color: '#5569E0',
-                      cursor: 'pointer',
-                      boxShadow: '0 1px 4px rgba(102,122,242,0.10)',
-                    }}
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-
-              <div className="p-5 border-t bg-slate-50/30">
-                <div className="flex gap-2">
-                  <input
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                    placeholder={isListening ? '듣고 있어요...' : '조항에 대해 질문하세요...'}
-                    className="flex-1 h-12 px-5 rounded-2xl border border-slate-200 outline-none focus:border-[#667AF2] bg-white transition-all"
-                    disabled={isSending}
-                  />
-                  <button
-                    onClick={toggleSTT}
-                    title="음성으로 입력"
-                    style={{
-                      width: 48, height: 48, borderRadius: 16, border: 'none', flexShrink: 0,
-                      background: isListening ? '#EF4444' : '#F1F5F9',
-                      color: isListening ? '#fff' : '#64748B',
-                      cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'background 0.2s',
-                    }}
-                  >
-                    {isListening ? <MicOff size={20} /> : <Mic size={20} />}
-                  </button>
-                  <button
-                    onClick={() => handleSendMessage()}
-                    disabled={isSending}
-                    style={{
-                      width: 48, height: 48, borderRadius: 16, border: 'none', flexShrink: 0,
-                      background: '#667AF2', color: '#fff', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      opacity: isSending ? 0.5 : 1,
-                    }}
-                  >
-                    <Send size={20} />
-                  </button>
-                </div>
-              </div>
-            </div>
-
+            <p className="mt-3 text-xs text-slate-400">
+              여러 이미지는 하나의 PDF로 합쳐서 업로드됩니다.
+            </p>
           </div>
-        </main>
+
+          <div className="flex-1 space-y-3 overflow-y-auto pr-2">
+            {selectedFiles.length === 0 && (
+              <div className="py-20 text-center text-slate-400">
+                파일을 선택해주세요.
+              </div>
+            )}
+
+            {selectedFiles.map((file, idx) => (
+              <div
+                key={`${file.name}-${file.lastModified}-${idx}`}
+                className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <ImageIcon size={18} className="shrink-0 text-[#667AF2]" />
+                  <span className="truncate text-sm font-medium text-slate-700">
+                    {file.name}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => removeFile(idx)}
+                  className="shrink-0 text-slate-400 transition hover:text-red-500"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            disabled={selectedFiles.length === 0 || isUploading}
+            onClick={handleUpload}
+            className="mt-6 w-full rounded-2xl bg-[#667AF2] py-5 font-bold text-white shadow-lg shadow-blue-100 transition disabled:bg-slate-200 disabled:shadow-none"
+          >
+            {isUploading
+              ? '업로드 중...'
+              : `${selectedFiles.length}개의 파일 업로드하기`}
+          </button>
+        </div>
+
+        <div className="flex w-1/2 flex-col overflow-hidden rounded-[40px] border border-slate-100 bg-white shadow-sm">
+          <div className="flex items-center gap-3 border-b border-slate-100 p-6">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#667AF2] text-white">
+              <Bot size={22} />
+            </div>
+            <span className="font-bold text-slate-800">AI 어시스턴트</span>
+          </div>
+
+          <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/30 p-8">
+            <div className="max-w-[90%] rounded-3xl rounded-tl-none border border-slate-100 bg-white p-5 text-sm text-slate-600 shadow-sm">
+              여러 장을 선택하면 하나의 PDF로 합쳐서 분석합니다.
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
