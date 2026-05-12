@@ -49,8 +49,6 @@ export function Loading() {
       if (!contractId) return;
 
       try {
-        // ✅ 분석 시작 요청 API
-        // 프론트는 /analyze가 아니라 /request-analysis를 호출해야 함
         await client.post(
           `/api/v1/contracts/${contractId}/request-analysis`,
           {},
@@ -264,6 +262,7 @@ export function Loading() {
                         <span className="text-[14px] font-medium text-slate-500">
                           전체 진행률
                         </span>
+
                         <span className="text-[15px] font-semibold text-slate-900">
                           {Math.round(progress)}%
                         </span>
@@ -278,6 +277,16 @@ export function Loading() {
                               'linear-gradient(90deg, #667AF2 0%, #8097F8 55%, #8ED8CC 100%)',
                           }}
                         />
+                      </div>
+
+                      <div className="mt-5 rounded-[16px] border border-[#E3E9FF] bg-[#F6F8FF] px-4 py-3 text-center shadow-[0_10px_24px_rgba(95,117,177,0.08)]">
+                        <p className="text-[12px] font-medium leading-5 text-[#6C80DD] sm:text-[13px] sm:leading-6">
+                          AI가 계약서를 꼼꼼하게 분석하고 있어요.
+                          <br />
+                          파일 용량에 따라 약 3~7분 정도 소요될 수 있으니,
+                          <br />
+                          분석이 완료될 때까지 창을 닫지 말아주세요.
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -337,7 +346,17 @@ export function Loading() {
                 />
               </div>
 
-              <p className="mt-3 text-[13px] text-slate-500">{Math.round(progress)}%</p>
+              <p className="mt-3 text-[13px] text-slate-500">
+                {Math.round(progress)}%
+              </p>
+
+              <div className="mt-4 rounded-[16px] border border-[#E3E9FF] bg-[#F6F8FF] px-4 py-3 text-center shadow-[0_10px_24px_rgba(95,117,177,0.08)]">
+                <p className="text-[12px] font-medium leading-5 text-[#6C80DD]">
+                  AI가 계약서를 꼼꼼하게 분석하고 있어요.
+                  <br />
+                  분석 완료 전까지 창을 닫지 말아주세요.
+                </p>
+              </div>
             </div>
           </section>
         </main>
