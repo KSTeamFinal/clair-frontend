@@ -279,7 +279,9 @@ export function Upload() {
                 계약서 업로드
               </h1>
               <p className="mt-3 text-[15px] leading-7 text-slate-500 sm:text-[16px] sm:leading-8 lg:text-[18px]">
-                PDF, 이미지(여러 장 가능), 텍스트 중 편한 방식으로 업로드하고 AI 분석을 시작해보세요.
+                PDF, 이미지(여러 장 가능), 텍스트 중 편한 방식으로 업로드하고 
+                <br />
+                AI 분석을 시작해보세요.
               </p>
             </div>
 
