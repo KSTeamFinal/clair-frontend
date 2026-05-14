@@ -12,6 +12,7 @@ import SettingsScreen from './screens/SettingsScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import ChatSessionScreen from './screens/ChatSessionScreen';
 import ContractManagementScreen from './screens/ContractManagementScreen';
+import { PasswordReset } from './screens/PasswordReset';
 
 export const router = createBrowserRouter([
   {
@@ -68,6 +69,11 @@ export const router = createBrowserRouter([
     path: '/contracts/manage',
     element: <ContractManagementScreen />
 
-  }
+  },
+
+  {
+  path: '/password-reset',
+  element: <PasswordReset />,
+  },
 
 ]);
