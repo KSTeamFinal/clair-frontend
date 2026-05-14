@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Bot, Check, Loader2, AlertTriangle } from 'lucide-react';
 import client from '../../api/client';
@@ -25,8 +25,10 @@ export function Loading() {
   ]);
 
   const [currentStep, setCurrentStep] = useState(0);
+  const [progress, setProgress] = useState(20);
   const [showFailModal, setShowFailModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
   const isStarted = useRef(false);
 
   const steps: Step[] = useMemo(
@@ -45,13 +47,38 @@ export function Loading() {
     isStarted.current = true;
 
     let pollInterval: number | undefined;
+    let fakeProgressInterval: number | undefined;
     const timers: number[] = [];
+
+    const stopFakeProgress = () => {
+      if (fakeProgressInterval) {
+        window.clearInterval(fakeProgressInterval);
+        fakeProgressInterval = undefined;
+      }
+    };
+
+    const startFakeProgress = () => {
+      if (fakeProgressInterval) return;
+
+      fakeProgressInterval = window.setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 95) return 95;
+
+          if (prev < 70) return Math.min(prev + 1, 70);
+          if (prev < 90) return Math.min(prev + 0.5, 90);
+
+          return Math.min(prev + 0.1, 95);
+        });
+      }, 1000);
+    };
 
     const stopPolling = () => {
       if (pollInterval) {
         window.clearInterval(pollInterval);
         pollInterval = undefined;
       }
+
+      stopFakeProgress();
 
       timers.forEach((timer) => window.clearTimeout(timer));
     };
@@ -76,7 +103,7 @@ export function Loading() {
           const timer = window.setTimeout(() => {
             setCurrentStep(index);
             addBotMessage(step.message);
-          }, index * 2500);
+          }, index * 35000);
 
           timers.push(timer);
         }
@@ -113,11 +140,12 @@ export function Loading() {
           stopPolling();
 
           setCurrentStep(steps.length - 1);
+          setProgress(100);
           addBotMessage('분석이 완료되었어요. 결과 화면으로 이동할게요.');
 
           window.setTimeout(() => {
             navigate(`/result/${contractId}`, { replace: true });
-          }, 1500);
+          }, 1200);
 
           return;
         }
@@ -149,10 +177,7 @@ export function Loading() {
 
         if (status === 401 || status === 403) {
           addBotMessage('인증 상태를 다시 확인하고 있어요. 분석은 계속 진행 중입니다.');
-          return;
         }
-
-        return;
       }
     };
 
@@ -164,67 +189,63 @@ export function Loading() {
       }, 3000);
     };
 
-    const startAnalysis = async () => {
+    const startAnalysis = () => {
       if (!contractId) {
         setErrorMessage('계약서 ID를 찾을 수 없어요.');
         setShowFailModal(true);
         return;
       }
 
-      startStepTimers();
+      setProgress(20);
 
-      try {
-        await client.post(
+      startFakeProgress();
+      startStepTimers();
+      startPolling();
+
+      client
+        .post(
           `/api/v1/contracts/${contractId}/request-analysis`,
           {},
           {
             timeout: 300000,
           },
-        );
+        )
+        .catch((err: any) => {
+          if (err?.response?.status === 409) {
+            console.log('이미 분석 중입니다.');
+            return;
+          }
 
-        startPolling();
-      } catch (err: any) {
-        if (err?.response?.status === 409) {
-          console.log('이미 분석 중입니다. 기존 분석 상태를 계속 확인합니다.');
-          startPolling();
-          return;
-        }
+          const status = err?.response?.status;
 
-        const status = err?.response?.status;
+          if (status === 401 || status === 403) {
+            addBotMessage('인증 상태를 다시 확인하고 있어요. 분석은 계속 진행 중입니다.');
+            return;
+          }
 
-        if (status === 401 || status === 403) {
-          console.warn('분석 요청 중 인증 상태 확인 실패. polling은 계속 진행합니다.');
-          addBotMessage('인증 상태를 다시 확인하고 있어요. 분석은 계속 진행 중입니다.');
-          startPolling();
-          return;
-        }
+          stopPolling();
 
-        stopPolling();
+          if (err?.code === 'ECONNABORTED') {
+            setErrorMessage('분석 요청 시간이 초과되었어요. 잠시 후 다시 시도해주세요.');
+          } else {
+            setErrorMessage(
+              err?.response?.data?.detail ??
+                '분석 요청 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.',
+            );
+          }
 
-        if (err?.code === 'ECONNABORTED') {
-          console.error('분석 요청 타임아웃 발생 (5분 초과)');
-          setErrorMessage('분석 요청 시간이 초과되었어요. 잠시 후 다시 시도해주세요.');
-        } else {
-          console.error('분석 시작 실패:', err);
-          setErrorMessage(
-            err?.response?.data?.detail ??
-              '분석 요청 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.',
-          );
-        }
-
-        addBotMessage('분석 요청 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.');
-        setShowFailModal(true);
-      }
+          addBotMessage('분석 요청 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.');
+          setShowFailModal(true);
+        });
     };
 
     startAnalysis();
 
     return () => {
       stopPolling();
+      isStarted.current = false;
     };
   }, [contractId, navigate, steps]);
-
-  const progress = Math.min(((currentStep + 1) / steps.length) * 100, 100);
 
   return (
     <div
@@ -423,9 +444,7 @@ export function Loading() {
                 />
               </div>
 
-              <p className="mt-3 text-[13px] text-slate-500">
-                {Math.round(progress)}%
-              </p>
+              <p className="mt-3 text-[13px] text-slate-500">{Math.round(progress)}%</p>
 
               <div className="mt-4 rounded-[16px] border border-[#E3E9FF] bg-[#F6F8FF] px-4 py-3 text-center shadow-[0_10px_24px_rgba(95,117,177,0.08)]">
                 <p className="text-[12px] font-medium leading-5 text-[#6C80DD]">
@@ -463,9 +482,7 @@ export function Loading() {
 
             {errorMessage && (
               <div className="mt-4 rounded-[18px] border border-[#E3E9FF] bg-[#F6F8FF] px-4 py-3 text-left">
-                <p className="text-[12px] leading-5 text-slate-500">
-                  {errorMessage}
-                </p>
+                <p className="text-[12px] leading-5 text-slate-500">{errorMessage}</p>
               </div>
             )}
 
