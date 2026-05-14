@@ -90,9 +90,26 @@ export function Loading() {
         const response = await client.get(`/api/v1/contracts/${contractId}`);
         const data = response.data;
 
-        const status = String(data?.status ?? '').toLowerCase();
+        const rawStatus =
+          data?.status ??
+          data?.analysis_status ??
+          data?.analysis?.status ??
+          data?.contract?.status;
 
-        if (status === 'completed') {
+        const status = String(rawStatus ?? '').toLowerCase();
+
+        const isCompleted =
+          status === 'completed' ||
+          status === 'complete' ||
+          status === 'done' ||
+          status === 'success' ||
+          status === 'analyzed' ||
+          status === 'finished' ||
+          !!data?.analysis ||
+          !!data?.analysis_completed_at ||
+          Array.isArray(data?.risk_clauses);
+
+        if (isCompleted) {
           stopPolling();
 
           setCurrentStep(steps.length - 1);
@@ -105,7 +122,13 @@ export function Loading() {
           return;
         }
 
-        if (status === 'failed') {
+        const isFailed =
+          status === 'failed' ||
+          status === 'error' ||
+          status === 'cancelled' ||
+          status === 'canceled';
+
+        if (isFailed) {
           stopPolling();
 
           setErrorMessage(

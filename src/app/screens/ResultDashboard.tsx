@@ -145,14 +145,7 @@ function normalizeAnalysis(data: any): AnalysisResult {
     safetyScore: Number(data?.analysis?.safety_score ?? calculatedScore) || 0,
     contractPeriod: getKeyInfoValue(
       keyInfo,
-      [
-        'contract_period',
-        'contractPeriod',
-        'period',
-        'duration',
-        '근로계약기간',
-        '계약기간',
-      ],
+      ['contract_period', 'contractPeriod', 'period', 'duration', '근로계약기간', '계약기간'],
       '-',
     ),
     contractPeriodDetail: getKeyInfoValue(
@@ -168,28 +161,12 @@ function normalizeAnalysis(data: any): AnalysisResult {
     ),
     salary: getKeyInfoValue(
       keyInfo,
-      [
-        'salary',
-        'monthly_salary',
-        'monthlySalary',
-        'wage',
-        'pay',
-        '급여',
-        '월급',
-        '임금',
-      ],
+      ['salary', 'monthly_salary', 'monthlySalary', 'wage', 'pay', '급여', '월급', '임금'],
       '-',
     ),
     salaryDetail: getKeyInfoValue(
       keyInfo,
-      [
-        'salary_detail',
-        'salaryDetail',
-        'wage_detail',
-        'wageDetail',
-        '급여상세',
-        '임금상세',
-      ],
+      ['salary_detail', 'salaryDetail', 'wage_detail', 'wageDetail', '급여상세', '임금상세'],
       '계약서 기준',
     ),
     summaryText:
@@ -216,10 +193,14 @@ export function ResultDashboard() {
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [showQuestions, setShowQuestions] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
+  const [sessionId, setSessionId] = useState<number | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
-  const [messages, setMessages] = useState<Message[]>([
+  const [dashboardMessages, setDashboardMessages] = useState<Message[]>([
     { role: 'bot', text: '분석 결과를 불러오고 있어요.', type: 'text' },
   ]);
+
+  const [chatMessages, setChatMessages] = useState<Message[]>([]);
 
   const safetyScore = analysis.safetyScore;
 
@@ -234,13 +215,47 @@ export function ResultDashboard() {
     };
   }, [analysis.risks]);
 
+  const suggestedQuestions = [
+    '이 계약서의 주요 위험 요소는?',
+    '초과 근무 수당은 어떻게 되나요?',
+    '계약 해지 조건이 어떻게 되나요?',
+  ];
+
+  const getAiAnswerFromResponse = (data: any) => {
+    return (
+      data?.ai_message?.content ??
+      data?.assistant_message?.content ??
+      data?.answer ??
+      data?.content ??
+      data?.message ??
+      data?.response ??
+      '답변을 받았지만 표시할 내용을 찾지 못했어요.'
+    );
+  };
+
+  const createChatSession = async () => {
+    const response = await client.post('/api/v1/chat/sessions', {
+      contract_id: contractId ? Number(contractId) : undefined,
+      title: analysis.fileName,
+    });
+
+    const newSessionId = response.data?.id ?? response.data?.session_id;
+
+    if (!newSessionId) {
+      throw new Error('채팅 세션 ID를 응답에서 찾지 못했어요.');
+    }
+
+    setSessionId(Number(newSessionId));
+    return Number(newSessionId);
+  };
+
   useEffect(() => {
     const fetchAnalysis = async () => {
       try {
         setIsLoading(true);
 
         if (!contractId) {
-          setMessages([
+          setDashboardMessages([
             {
               role: 'bot',
               text: '계약서 ID를 찾을 수 없어 분석 결과를 불러오지 못했어요.',
@@ -255,26 +270,22 @@ export function ResultDashboard() {
 
         setAnalysis(normalized);
 
-        setMessages([
+        setDashboardMessages([
           { role: 'bot', text: '분석이 완료되었어요.', type: 'text' },
-          {
-            role: 'bot',
-            text: normalized.summaryText,
-            type: 'text',
-          },
+          { role: 'bot', text: normalized.summaryText, type: 'text' },
           { role: 'bot', text: '', type: 'summary' },
           { role: 'bot', text: '', type: 'risks' },
           { role: 'bot', text: '', type: 'score' },
           {
             role: 'bot',
-            text: '계약서에 대해 궁금한 점이 있으면 편하게 물어보세요.',
+            text: '계약서에 대해 궁금한 점이 있으면 오른쪽 채팅창에 물어보세요.',
             type: 'text',
           },
         ]);
       } catch (error) {
         console.error('분석 결과 조회 실패:', error);
 
-        setMessages([
+        setDashboardMessages([
           {
             role: 'bot',
             text: '분석 결과를 불러오지 못했어요. 잠시 후 다시 시도해주세요.',
@@ -289,46 +300,58 @@ export function ResultDashboard() {
     fetchAnalysis();
   }, [contractId]);
 
-  const suggestedQuestions = [
-    '이 계약서의 주요 위험 요소는?',
-    '초과 근무 수당은 어떻게 되나요?',
-    '계약 해지 조건이 어떻게 되나요?',
-  ];
+  useEffect(() => {
+    if (!contractId || sessionId) return;
 
-  const handleSendMessage = (preset?: string) => {
+    createChatSession().catch((error) => {
+      console.error('채팅 세션 생성 실패:', error);
+    });
+  }, [contractId, sessionId, analysis.fileName]);
+
+  const handleSendMessage = async (preset?: string) => {
     const messageToSend = preset ?? inputMessage;
-    if (!messageToSend.trim()) return;
 
-    setMessages((prev) => [
+    if (!messageToSend.trim() || isSending) return;
+
+    setChatMessages((prev) => [
       ...prev,
       { role: 'user', text: messageToSend, type: 'text' },
     ]);
 
-    setTimeout(() => {
-      let botResponse =
-        '계약서와 관련해 궁금한 점을 더 구체적으로 물어보시면 자세히 설명해드릴게요.';
-
-      if (messageToSend.includes('위험') || messageToSend.includes('문제')) {
-        botResponse =
-          analysis.risks.length > 0
-            ? `주요 위험 요소는 ${analysis.risks
-                .slice(0, 3)
-                .map((risk) => risk.title)
-                .join(', ')}입니다. 특히 위험도가 높은 항목부터 확인해보는 것이 좋아요.`
-            : '현재 감지된 주요 위험 요소가 없습니다.';
-      } else if (messageToSend.includes('급여') || messageToSend.includes('연봉')) {
-        botResponse = `급여 정보는 ${analysis.salary}로 확인됩니다. ${analysis.salaryDetail}`;
-      } else if (messageToSend.includes('기간') || messageToSend.includes('언제')) {
-        botResponse = `계약 기간은 ${analysis.contractPeriod}로 확인됩니다. ${analysis.contractPeriodDetail}`;
-      }
-
-      setMessages((prev) => [
-        ...prev,
-        { role: 'bot', text: botResponse, type: 'text' },
-      ]);
-    }, 500);
-
     setInputMessage('');
+    setIsSending(true);
+
+    try {
+      const activeSessionId = sessionId ?? (await createChatSession());
+
+      const response = await client.post(
+        `/api/v1/chat/sessions/${activeSessionId}/messages`,
+        {
+          content: messageToSend,
+          message_type: 'question',
+        },
+      );
+
+      const aiAnswer = getAiAnswerFromResponse(response.data);
+
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'bot', text: aiAnswer, type: 'text' },
+      ]);
+    } catch (error) {
+      console.error('메시지 전송 실패:', error);
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: 'bot',
+          text: '메시지 전송에 실패했어요. 잠시 후 다시 시도해주세요.',
+          type: 'text',
+        },
+      ]);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleQuestionClick = (question: string) => {
@@ -642,179 +665,6 @@ export function ResultDashboard() {
               </div>
             </div>
 
-            <div className="mx-auto mt-7 lg:hidden">
-              <div className="overflow-hidden rounded-[28px] border border-white/90 bg-white/80 shadow-[0_30px_70px_rgba(15,23,42,0.10)] backdrop-blur">
-                <div className="border-b border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(238,242,249,0.72)_100%)] px-4 py-4 sm:px-6 sm:py-5">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="flex h-11 w-11 items-center justify-center rounded-[16px] text-white shadow-lg sm:h-12 sm:w-12 sm:rounded-[18px]"
-                      style={{
-                        background:
-                          'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                      }}
-                    >
-                      <Bot size={20} className="sm:h-6 sm:w-6" />
-                    </div>
-
-                    <div>
-                      <h2 className="text-[15px] font-semibold text-slate-900 sm:text-[16px]">
-                        AI 어시스턴트
-                      </h2>
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                        <span className="text-[13px] text-slate-500">
-                          {isLoading ? '불러오는 중' : '분석 완료'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 sm:p-6">
-                  <div className="rounded-[24px] border border-slate-100 bg-[#F8FAFF] p-5">
-                    <div className="flex flex-col items-center text-center">
-                      <ScoreRing score={safetyScore} />
-
-                      <h3 className="mt-4 text-[22px] font-semibold tracking-[-0.04em] text-slate-900">
-                        계약 안정도
-                      </h3>
-                      <p className="mt-1 text-[14px] text-slate-500">{scoreLabel}</p>
-
-                      <div className="mt-5 grid w-full grid-cols-3 gap-3">
-                        <div className="rounded-[18px] bg-white p-3">
-                          <div className="flex items-center justify-center gap-1 text-red-500">
-                            <AlertTriangle size={15} />
-                            <span className="text-[18px] font-semibold">{riskCounts.high}</span>
-                          </div>
-                          <p className="mt-1 text-[12px] text-slate-500">높음</p>
-                        </div>
-
-                        <div className="rounded-[18px] bg-white p-3">
-                          <div className="flex items-center justify-center gap-1 text-amber-500">
-                            <Info size={15} />
-                            <span className="text-[18px] font-semibold">{riskCounts.medium}</span>
-                          </div>
-                          <p className="mt-1 text-[12px] text-slate-500">보통</p>
-                        </div>
-
-                        <div className="rounded-[18px] bg-white p-3">
-                          <div className="flex items-center justify-center gap-1 text-emerald-500">
-                            <CheckCircle size={15} />
-                            <span className="text-[18px] font-semibold">{riskCounts.low}</span>
-                          </div>
-                          <p className="mt-1 text-[12px] text-slate-500">낮음</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <SummaryCards />
-                  </div>
-
-                  {!showMobileDetail && (
-                    <button
-                      type="button"
-                      onClick={() => setShowMobileDetail(true)}
-                      className="mt-4 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-[18px] text-[14px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5"
-                      style={{
-                        background:
-                          'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                      }}
-                    >
-                      상세 분석 보기
-                      <ChevronDown size={16} />
-                    </button>
-                  )}
-
-                  {showMobileDetail && (
-                    <div className="mt-4 space-y-4">
-                      <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
-                        <div className="flex items-center gap-2">
-                          <FileText size={16} className="text-[#6C80DD]" />
-                          <h3 className="text-[15px] font-semibold text-slate-900">
-                            주요 확인 포인트
-                          </h3>
-                        </div>
-
-                        <div className="mt-4 rounded-[18px] bg-[#F8FAFF] p-4">
-                          <p className="text-[14px] font-medium leading-6 text-slate-900">
-                            {analysis.summaryText}
-                          </p>
-                        </div>
-
-                        <div className="mt-4">
-                          <RiskCards />
-                        </div>
-                      </div>
-
-                      <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => setShowQuestions((prev) => !prev)}
-                          className="flex w-full items-center justify-between"
-                        >
-                          <span className="text-[15px] font-semibold text-slate-900">
-                            추천 질문
-                          </span>
-                          {showQuestions ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
-
-                        {showQuestions && (
-                          <div className="mt-4 space-y-2">
-                            {suggestedQuestions.map((question, index) => (
-                              <button
-                                key={index}
-                                type="button"
-                                onClick={() => handleQuestionClick(question)}
-                                className="w-full rounded-[18px] border border-slate-100 bg-[#F8FAFF] px-4 py-3 text-left text-[14px] font-medium text-slate-700 transition-all hover:border-[#DCE4FF] hover:bg-white"
-                              >
-                                {question}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={inputMessage}
-                            onChange={(e) => setInputMessage(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSendMessage();
-                            }}
-                            placeholder="질문하기"
-                            className="h-[48px] flex-1 rounded-[18px] border border-slate-200/80 bg-white px-4 text-[14px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8]"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleSendMessage()}
-                            className="inline-flex h-[48px] w-[48px] items-center justify-center rounded-[18px] text-white shadow-sm transition-all hover:-translate-y-0.5"
-                            style={{
-                              background:
-                                'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                            }}
-                          >
-                            <Send size={18} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowMobileDetail(false)}
-                        className="w-full text-[14px] font-medium text-slate-500"
-                      >
-                        간단 보기로 돌아가기
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
             <div className="mx-auto mt-7 hidden overflow-hidden rounded-[28px] border border-white/90 bg-white/80 shadow-[0_30px_70px_rgba(15,23,42,0.10)] backdrop-blur lg:block sm:rounded-[32px]">
               <div className="border-b border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(238,242,249,0.72)_100%)] px-4 py-4 sm:px-6 sm:py-5">
                 <div className="flex items-center gap-3">
@@ -835,7 +685,7 @@ export function ResultDashboard() {
                     <div className="mt-1 flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-emerald-500" />
                       <span className="text-[13px] text-slate-500">
-                        {isLoading ? '불러오는 중' : '분석 완료'}
+                        {isLoading ? '불러오는 중' : isSending ? '답변 작성 중' : '분석 완료'}
                       </span>
                     </div>
                   </div>
@@ -845,41 +695,23 @@ export function ResultDashboard() {
               <div className="grid min-h-[720px] lg:grid-cols-[1.05fr_0.95fr]">
                 <div className="p-4 sm:p-6 lg:border-r lg:border-slate-100/80">
                   <div className="space-y-4">
-                    {messages.map((message, index) => (
+                    {dashboardMessages.map((message, index) => (
                       <div key={index}>
                         {message.type === 'text' && (
-                          <div
-                            className={`flex gap-3 ${
-                              message.role === 'user' ? 'justify-end' : 'justify-start'
-                            }`}
-                          >
-                            {message.role === 'bot' && (
-                              <div
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                                style={{
-                                  background:
-                                    'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                                }}
-                              >
-                                <Bot size={16} />
-                              </div>
-                            )}
-
+                          <div className="flex justify-start gap-3">
                             <div
-                              className={`max-w-[82%] whitespace-pre-line rounded-[20px] px-4 py-3 text-[14px] leading-6 sm:max-w-[75%] sm:text-[15px] ${
-                                message.role === 'bot'
-                                  ? 'rounded-tl-[8px] border border-white/90 bg-white text-slate-800 shadow-sm'
-                                  : 'rounded-tr-[8px] bg-[#6C80DD] text-white shadow-sm'
-                              }`}
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
+                              style={{
+                                background:
+                                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                              }}
                             >
-                              {message.text}
+                              <Bot size={16} />
                             </div>
 
-                            {message.role === 'user' && (
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-slate-800 text-white">
-                                <UserIcon size={16} />
-                              </div>
-                            )}
+                            <div className="max-w-[82%] whitespace-pre-line rounded-[20px] rounded-tl-[8px] border border-white/90 bg-white px-4 py-3 text-[14px] leading-6 text-slate-800 shadow-sm sm:max-w-[75%] sm:text-[15px]">
+                              {message.text}
+                            </div>
                           </div>
                         )}
 
@@ -999,68 +831,99 @@ export function ResultDashboard() {
                       </div>
                     ))}
 
-                    {messages.length <= 6 && (
-                      <div className="pt-2">
-                        <p className="mb-3 text-[14px] font-semibold text-slate-800">
-                          추천 질문
-                        </p>
-                        <div className="space-y-2">
-                          {suggestedQuestions.map((question, index) => (
-                            <button
-                              key={index}
-                              type="button"
-                              onClick={() => handleQuestionClick(question)}
-                              className="w-full rounded-[18px] border border-slate-100 bg-white px-4 py-3 text-left text-[14px] font-medium text-slate-700 transition-all hover:border-[#DCE4FF] hover:bg-[#F8FAFF] sm:text-[15px]"
-                            >
-                              {question}
-                            </button>
-                          ))}
-                        </div>
+                    <div className="pt-2">
+                      <p className="mb-3 text-[14px] font-semibold text-slate-800">
+                        추천 질문
+                      </p>
+                      <div className="space-y-2">
+                        {suggestedQuestions.map((question, index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => handleQuestionClick(question)}
+                            disabled={isSending}
+                            className="w-full rounded-[18px] border border-slate-100 bg-white px-4 py-3 text-left text-[14px] font-medium text-slate-700 transition-all hover:border-[#DCE4FF] hover:bg-[#F8FAFF] disabled:opacity-60 sm:text-[15px]"
+                          >
+                            {question}
+                          </button>
+                        ))}
                       </div>
-                    )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="hidden min-h-[720px] flex-col bg-white/30 lg:flex">
                   <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
-                    {messages
-                      .filter((message) => message.type === 'text')
-                      .map((message, index) => (
+                    {chatMessages.length === 0 && (
+                      <div className="flex gap-3">
                         <div
-                          key={index}
-                          className={`flex gap-3 ${
-                            message.role === 'user' ? 'justify-end' : 'justify-start'
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
+                          style={{
+                            background:
+                              'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                          }}
+                        >
+                          <Bot size={16} />
+                        </div>
+                        <div className="max-w-[82%] rounded-[20px] rounded-tl-[8px] border border-white/90 bg-white px-4 py-3 text-[14px] leading-6 text-slate-800 shadow-sm sm:max-w-[75%] sm:text-[15px]">
+                          계약서에 대해 궁금한 점을 물어보세요.
+                        </div>
+                      </div>
+                    )}
+
+                    {chatMessages.map((message, index) => (
+                      <div
+                        key={index}
+                        className={`flex gap-3 ${
+                          message.role === 'user' ? 'justify-end' : 'justify-start'
+                        }`}
+                      >
+                        {message.role === 'bot' && (
+                          <div
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
+                            style={{
+                              background:
+                                'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                            }}
+                          >
+                            <Bot size={16} />
+                          </div>
+                        )}
+
+                        <div
+                          className={`max-w-[82%] whitespace-pre-line rounded-[20px] px-4 py-3 text-[14px] leading-6 sm:max-w-[75%] sm:text-[15px] ${
+                            message.role === 'bot'
+                              ? 'rounded-tl-[8px] border border-white/90 bg-white text-slate-800 shadow-sm'
+                              : 'rounded-tr-[8px] bg-[#6C80DD] text-white shadow-sm'
                           }`}
                         >
-                          {message.role === 'bot' && (
-                            <div
-                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                              style={{
-                                background:
-                                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                              }}
-                            >
-                              <Bot size={16} />
-                            </div>
-                          )}
-
-                          <div
-                            className={`max-w-[82%] whitespace-pre-line rounded-[20px] px-4 py-3 text-[14px] leading-6 sm:max-w-[75%] sm:text-[15px] ${
-                              message.role === 'bot'
-                                ? 'rounded-tl-[8px] border border-white/90 bg-white text-slate-800 shadow-sm'
-                                : 'rounded-tr-[8px] bg-[#6C80DD] text-white shadow-sm'
-                            }`}
-                          >
-                            {message.text}
-                          </div>
-
-                          {message.role === 'user' && (
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-slate-800 text-white">
-                              <UserIcon size={16} />
-                            </div>
-                          )}
+                          {message.text}
                         </div>
-                      ))}
+
+                        {message.role === 'user' && (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-slate-800 text-white">
+                            <UserIcon size={16} />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {isSending && (
+                      <div className="flex gap-3">
+                        <div
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
+                          style={{
+                            background:
+                              'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                          }}
+                        >
+                          <Bot size={16} />
+                        </div>
+                        <div className="rounded-[20px] rounded-tl-[8px] border border-white/90 bg-white px-4 py-3 text-[14px] leading-6 text-slate-500 shadow-sm">
+                          답변을 작성하고 있어요...
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="border-t border-slate-100 bg-white/70 p-3 sm:p-4">
@@ -1073,12 +936,14 @@ export function ResultDashboard() {
                           if (e.key === 'Enter') handleSendMessage();
                         }}
                         placeholder="계약서에 대해 질문하세요..."
-                        className="h-[50px] flex-1 rounded-[18px] border border-slate-200/80 bg-white px-4 text-[14px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] sm:h-[52px] sm:text-[15px]"
+                        disabled={isSending}
+                        className="h-[50px] flex-1 rounded-[18px] border border-slate-200/80 bg-white px-4 text-[14px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] disabled:opacity-60 sm:h-[52px] sm:text-[15px]"
                       />
                       <button
                         type="button"
                         onClick={() => handleSendMessage()}
-                        className="inline-flex h-[50px] w-[50px] items-center justify-center rounded-[18px] text-white shadow-sm transition-all hover:-translate-y-0.5 sm:h-[52px] sm:w-[52px]"
+                        disabled={isSending}
+                        className="inline-flex h-[50px] w-[50px] items-center justify-center rounded-[18px] text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:opacity-60 sm:h-[52px] sm:w-[52px]"
                         style={{
                           background:
                             'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
@@ -1088,6 +953,209 @@ export function ResultDashboard() {
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mx-auto mt-7 lg:hidden">
+              <div className="overflow-hidden rounded-[28px] border border-white/90 bg-white/80 shadow-[0_30px_70px_rgba(15,23,42,0.10)] backdrop-blur">
+                <div className="border-b border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(238,242,249,0.72)_100%)] px-4 py-4 sm:px-6 sm:py-5">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="flex h-11 w-11 items-center justify-center rounded-[16px] text-white shadow-lg sm:h-12 sm:w-12 sm:rounded-[18px]"
+                      style={{
+                        background:
+                          'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                      }}
+                    >
+                      <Bot size={20} className="sm:h-6 sm:w-6" />
+                    </div>
+
+                    <div>
+                      <h2 className="text-[15px] font-semibold text-slate-900 sm:text-[16px]">
+                        AI 어시스턴트
+                      </h2>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                        <span className="text-[13px] text-slate-500">
+                          {isLoading ? '불러오는 중' : isSending ? '답변 작성 중' : '분석 완료'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 sm:p-6">
+                  <div className="rounded-[24px] border border-slate-100 bg-[#F8FAFF] p-5">
+                    <div className="flex flex-col items-center text-center">
+                      <ScoreRing score={safetyScore} />
+
+                      <h3 className="mt-4 text-[22px] font-semibold tracking-[-0.04em] text-slate-900">
+                        계약 안정도
+                      </h3>
+                      <p className="mt-1 text-[14px] text-slate-500">{scoreLabel}</p>
+
+                      <div className="mt-5 grid w-full grid-cols-3 gap-3">
+                        <div className="rounded-[18px] bg-white p-3">
+                          <div className="flex items-center justify-center gap-1 text-red-500">
+                            <AlertTriangle size={15} />
+                            <span className="text-[18px] font-semibold">{riskCounts.high}</span>
+                          </div>
+                          <p className="mt-1 text-[12px] text-slate-500">높음</p>
+                        </div>
+
+                        <div className="rounded-[18px] bg-white p-3">
+                          <div className="flex items-center justify-center gap-1 text-amber-500">
+                            <Info size={15} />
+                            <span className="text-[18px] font-semibold">{riskCounts.medium}</span>
+                          </div>
+                          <p className="mt-1 text-[12px] text-slate-500">보통</p>
+                        </div>
+
+                        <div className="rounded-[18px] bg-white p-3">
+                          <div className="flex items-center justify-center gap-1 text-emerald-500">
+                            <CheckCircle size={15} />
+                            <span className="text-[18px] font-semibold">{riskCounts.low}</span>
+                          </div>
+                          <p className="mt-1 text-[12px] text-slate-500">낮음</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <SummaryCards />
+                  </div>
+
+                  {!showMobileDetail && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMobileDetail(true)}
+                      className="mt-4 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-[18px] text-[14px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5"
+                      style={{
+                        background:
+                          'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                      }}
+                    >
+                      상세 분석 보기
+                      <ChevronDown size={16} />
+                    </button>
+                  )}
+
+                  {showMobileDetail && (
+                    <div className="mt-4 space-y-4">
+                      <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+                        <div className="flex items-center gap-2">
+                          <FileText size={16} className="text-[#6C80DD]" />
+                          <h3 className="text-[15px] font-semibold text-slate-900">
+                            주요 확인 포인트
+                          </h3>
+                        </div>
+
+                        <div className="mt-4 rounded-[18px] bg-[#F8FAFF] p-4">
+                          <p className="text-[14px] font-medium leading-6 text-slate-900">
+                            {analysis.summaryText}
+                          </p>
+                        </div>
+
+                        <div className="mt-4">
+                          <RiskCards />
+                        </div>
+                      </div>
+
+                      <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => setShowQuestions((prev) => !prev)}
+                          className="flex w-full items-center justify-between"
+                        >
+                          <span className="text-[15px] font-semibold text-slate-900">
+                            추천 질문
+                          </span>
+                          {showQuestions ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </button>
+
+                        {showQuestions && (
+                          <div className="mt-4 space-y-2">
+                            {suggestedQuestions.map((question, index) => (
+                              <button
+                                key={index}
+                                type="button"
+                                onClick={() => handleQuestionClick(question)}
+                                disabled={isSending}
+                                className="w-full rounded-[18px] border border-slate-100 bg-[#F8FAFF] px-4 py-3 text-left text-[14px] font-medium text-slate-700 transition-all hover:border-[#DCE4FF] hover:bg-white disabled:opacity-60"
+                              >
+                                {question}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={inputMessage}
+                            onChange={(e) => setInputMessage(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSendMessage();
+                            }}
+                            placeholder="질문하기"
+                            disabled={isSending}
+                            className="h-[48px] flex-1 rounded-[18px] border border-slate-200/80 bg-white px-4 text-[14px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] disabled:opacity-60"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSendMessage()}
+                            disabled={isSending}
+                            className="inline-flex h-[48px] w-[48px] items-center justify-center rounded-[18px] text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:opacity-60"
+                            style={{
+                              background:
+                                'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                            }}
+                          >
+                            <Send size={18} />
+                          </button>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          {chatMessages.map((message, index) => (
+                            <div
+                              key={index}
+                              className={`flex gap-2 ${
+                                message.role === 'user' ? 'justify-end' : 'justify-start'
+                              }`}
+                            >
+                              <div
+                                className={`max-w-[82%] whitespace-pre-line rounded-[18px] px-4 py-3 text-[13px] leading-6 ${
+                                  message.role === 'bot'
+                                    ? 'bg-[#F8FAFF] text-slate-800'
+                                    : 'bg-[#6C80DD] text-white'
+                                }`}
+                              >
+                                {message.text}
+                              </div>
+                            </div>
+                          ))}
+
+                          {isSending && (
+                            <div className="rounded-[18px] bg-[#F8FAFF] px-4 py-3 text-[13px] text-slate-500">
+                              답변을 작성하고 있어요...
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowMobileDetail(false)}
+                        className="w-full text-[14px] font-medium text-slate-500"
+                      >
+                        간단 보기로 돌아가기
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
