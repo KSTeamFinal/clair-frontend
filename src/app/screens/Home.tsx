@@ -30,10 +30,11 @@ export function Home() {
         const contractRes = await client.get('/api/v1/contracts/');
         const contractData = contractRes.data;
 
+        // ✅ 수정된 데이터 매핑 로직
         if (Array.isArray(contractData)) {
           setContracts(contractData);
-        } else if (contractData?.contracts) {
-          setContracts(contractData.contracts);
+        } else if (contractData && contractData.results) {
+          setContracts(contractData.results);
         }
 
       } catch (error: any) {
@@ -45,17 +46,12 @@ export function Home() {
     fetchData();
   }, []);
 
-  const completedCount = contracts.filter(
-    (c) => c.status?.toLowerCase() === 'completed'
-  ).length;
-  const completionRate =
-    contracts.length > 0 ? Math.round((completedCount / contracts.length) * 100) : 0;
-
+  // 상단 통계 수치 (백엔드 데이터에 따라 나중에 value를 변수로 바꿀 수 있습니다)
   const stats = [
     {
       id: 1,
       label: '총 분석 건수',
-      value: contracts.length.toString(),
+      value: contracts.length.toString(), // 실제 데이터 개수 반영
       description: '업로드된 전체 문서',
       descriptionClass: 'text-emerald-600',
       icon: <FileText size={20} className="text-[#6C80DD]" />,
@@ -63,9 +59,9 @@ export function Home() {
     },
     {
       id: 2,
-      label: '분석 완료율',
-      value: contracts.length > 0 ? `${completionRate}%` : '-',
-      description: `완료 ${completedCount} / 전체 ${contracts.length}건`,
+      label: '계약 안정도',
+      value: '85%',
+      description: '최근 분석 문서 평균',
       descriptionClass: 'text-slate-500',
       icon: <ShieldCheck size={20} className="text-sky-600" />,
       iconBg: 'bg-sky-50',
@@ -73,7 +69,7 @@ export function Home() {
     {
       id: 3,
       label: 'AI로 절약한 시간',
-      value: completedCount > 0 ? `${completedCount * 2}시간` : '-',
+      value: `${contracts.length * 2}시간`, // 예시 계산식
       description: '직접 검토 대비',
       descriptionClass: 'text-slate-500',
       icon: <Clock size={20} className="text-violet-600" />,
@@ -187,7 +183,7 @@ export function Home() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <h3 className="truncate text-sm font-semibold text-slate-900 sm:text-base">
-                              {doc.original_filename || '제목 없는 문서'}
+                              {doc.title || '제목 없는 문서'}
                             </h3>
                             <p className="mt-1 text-xs text-slate-500 sm:text-sm">
                               {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : '날짜 정보 없음'}

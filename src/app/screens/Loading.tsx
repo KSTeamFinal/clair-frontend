@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Bot, Check, Loader2 } from 'lucide-react';
+import { Bot, Check, Loader2, AlertTriangle } from 'lucide-react';
 import client from '../../api/client';
 
 type Message = {
@@ -25,6 +25,10 @@ export function Loading() {
   ]);
 
   const [currentStep, setCurrentStep] = useState(0);
+  const [progress, setProgress] = useState(20);
+  const [showFailModal, setShowFailModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
   const isStarted = useRef(false);
 
   const steps: Step[] = useMemo(
@@ -35,7 +39,7 @@ export function Loading() {
       { label: '위험 요소 점검', message: '주의가 필요한 조항과 잠재적인 위험 요소를 찾고 있어요.' },
       { label: '결과 정리', message: '최종 분석 결과를 보기 쉽게 정리하고 있어요.' },
     ],
-    []
+    [],
   );
 
   useEffect(() => {
@@ -43,103 +47,205 @@ export function Loading() {
     isStarted.current = true;
 
     let pollInterval: number | undefined;
+    let fakeProgressInterval: number | undefined;
     const timers: number[] = [];
 
-    const startAnalysis = async () => {
+    const stopFakeProgress = () => {
+      if (fakeProgressInterval) {
+        window.clearInterval(fakeProgressInterval);
+        fakeProgressInterval = undefined;
+      }
+    };
+
+    const startFakeProgress = () => {
+      if (fakeProgressInterval) return;
+
+      fakeProgressInterval = window.setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 95) return 95;
+
+          if (prev < 70) return Math.min(prev + 1, 70);
+          if (prev < 90) return Math.min(prev + 0.5, 90);
+
+          return Math.min(prev + 0.1, 95);
+        });
+      }, 1000);
+    };
+
+    const stopPolling = () => {
+      if (pollInterval) {
+        window.clearInterval(pollInterval);
+        pollInterval = undefined;
+      }
+
+      stopFakeProgress();
+
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+
+    const addBotMessage = (text: string) => {
+      setMessages((prev) => {
+        if (prev.some((message) => message.text === text)) return prev;
+
+        return [
+          ...prev,
+          {
+            role: 'bot',
+            text,
+          },
+        ];
+      });
+    };
+
+    const startStepTimers = () => {
+      steps.forEach((step, index) => {
+        if (index > 0 && index < steps.length - 1) {
+          const timer = window.setTimeout(() => {
+            setCurrentStep(index);
+            addBotMessage(step.message);
+          }, index * 35000);
+
+          timers.push(timer);
+        }
+      });
+    };
+
+    const pollStatus = async () => {
       if (!contractId) return;
 
       try {
-        // ✅ 분석 시작 요청 API
-        // 프론트는 /analyze가 아니라 /request-analysis를 호출해야 함
-        await client.post(
+        const response = await client.get(`/api/v1/contracts/${contractId}`);
+        const data = response.data;
+
+        const rawStatus =
+          data?.status ??
+          data?.analysis_status ??
+          data?.analysis?.status ??
+          data?.contract?.status;
+
+        const status = String(rawStatus ?? '').toLowerCase();
+
+        const isCompleted =
+          status === 'completed' ||
+          status === 'complete' ||
+          status === 'done' ||
+          status === 'success' ||
+          status === 'analyzed' ||
+          status === 'finished' ||
+          !!data?.analysis ||
+          !!data?.analysis_completed_at ||
+          Array.isArray(data?.risk_clauses);
+
+        if (isCompleted) {
+          stopPolling();
+
+          setCurrentStep(steps.length - 1);
+          setProgress(100);
+          addBotMessage('분석이 완료되었어요. 결과 화면으로 이동할게요.');
+
+          window.setTimeout(() => {
+            navigate(`/result/${contractId}`, { replace: true });
+          }, 1200);
+
+          return;
+        }
+
+        const isFailed =
+          status === 'failed' ||
+          status === 'error' ||
+          status === 'cancelled' ||
+          status === 'canceled';
+
+        if (isFailed) {
+          stopPolling();
+
+          setErrorMessage(
+            data?.error ??
+              data?.analysis_error ??
+              '계약서 분석 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.',
+          );
+
+          addBotMessage('분석 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.');
+          setShowFailModal(true);
+
+          return;
+        }
+      } catch (error: any) {
+        const status = error?.response?.status;
+
+        console.error('상태 확인 실패 (폴링 중):', error);
+
+        if (status === 401 || status === 403) {
+          addBotMessage('인증 상태를 다시 확인하고 있어요. 분석은 계속 진행 중입니다.');
+        }
+      }
+    };
+
+    const startPolling = () => {
+      pollStatus();
+
+      pollInterval = window.setInterval(() => {
+        pollStatus();
+      }, 3000);
+    };
+
+    const startAnalysis = () => {
+      if (!contractId) {
+        setErrorMessage('계약서 ID를 찾을 수 없어요.');
+        setShowFailModal(true);
+        return;
+      }
+
+      setProgress(20);
+
+      startFakeProgress();
+      startStepTimers();
+      startPolling();
+
+      client
+        .post(
           `/api/v1/contracts/${contractId}/analyze`,
           {},
           {
             timeout: 300000,
-          }
-        );
-
-        steps.forEach((step, index) => {
-          if (index > 0 && index < steps.length - 1) {
-            const timer = window.setTimeout(() => {
-              setCurrentStep(index);
-
-              setMessages((prev) => {
-                if (prev.some((m) => m.text === step.message)) return prev;
-
-                return [
-                  ...prev,
-                  {
-                    role: 'bot',
-                    text: step.message,
-                  },
-                ];
-              });
-            }, index * 2500);
-
-            timers.push(timer);
-          }
-        });
-
-        pollInterval = window.setInterval(async () => {
-          try {
-            const response = await client.get(`/api/v1/contracts/${contractId}`);
-            const data = response.data;
-
-            const status = data.status?.toLowerCase();
-
-            if (status === 'completed' || status === 'success') {
-              if (pollInterval) clearInterval(pollInterval);
-              timers.forEach((timer) => window.clearTimeout(timer));
-              setCurrentStep(steps.length - 1);
-              setMessages((prev) => {
-                if (prev.some((m) => m.text.includes('결과 화면으로 이동'))) return prev;
-                return [...prev, { role: 'bot', text: '분석이 완료되었어요. 결과 화면으로 이동할게요.' }];
-              });
-              window.setTimeout(() => {
-                navigate(`/result/${contractId}`, { replace: true });
-              }, 1500);
-            } else if (status === 'failed') {
-              if (pollInterval) clearInterval(pollInterval);
-              timers.forEach((timer) => window.clearTimeout(timer));
-              setMessages((prev) => [
-                ...prev,
-                { role: 'bot', text: `분석 중 오류가 발생했어요. 홈으로 돌아가 다시 시도해주세요.\n원인: ${data.analysis_error || '알 수 없는 오류'}` },
-              ]);
-            }
-          } catch (error) {
-            console.error('상태 확인 실패 (폴링 중):', error);
-          }
-        }, 3000);
-      } catch (err: any) {
-        if (err.code === 'ECONNABORTED') {
-          console.error('분석 요청 타임아웃 발생 (5분 초과)');
-        } else {
-          console.error('분석 시작 실패:', err);
-        }
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'bot',
-            text: '분석 요청 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.',
           },
-        ]);
-      }
+        )
+        .catch((err: any) => {
+          if (err?.response?.status === 409) {
+            console.log('이미 분석 중입니다.');
+            return;
+          }
+
+          const status = err?.response?.status;
+
+          if (status === 401 || status === 403) {
+            addBotMessage('인증 상태를 다시 확인하고 있어요. 분석은 계속 진행 중입니다.');
+            return;
+          }
+
+          stopPolling();
+
+          if (err?.code === 'ECONNABORTED') {
+            setErrorMessage('분석 요청 시간이 초과되었어요. 잠시 후 다시 시도해주세요.');
+          } else {
+            setErrorMessage(
+              err?.response?.data?.detail ??
+                '분석 요청 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.',
+            );
+          }
+
+          addBotMessage('분석 요청 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.');
+          setShowFailModal(true);
+        });
     };
 
     startAnalysis();
 
     return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-
-      if (pollInterval) {
-        clearInterval(pollInterval);
-      }
+      stopPolling();
+      isStarted.current = false;
     };
   }, [contractId, navigate, steps]);
-
-  const progress = Math.min(((currentStep + 1) / steps.length) * 100, 100);
 
   return (
     <div
@@ -254,6 +360,7 @@ export function Loading() {
                         <span className="text-[14px] font-medium text-slate-500">
                           전체 진행률
                         </span>
+
                         <span className="text-[15px] font-semibold text-slate-900">
                           {Math.round(progress)}%
                         </span>
@@ -270,15 +377,15 @@ export function Loading() {
                         />
                       </div>
 
-                      {currentStep >= steps.length - 2 && progress < 100 && (
-                        <div className="mt-3 flex items-start gap-2 rounded-[14px] bg-amber-50 px-3 py-2.5">
-                          <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-amber-500" />
-                          <p className="text-[12px] leading-5 text-amber-700">
-                            AI가 계약서를 꼼꼼히 검토하고 있어요.<br />
-                            문서 길이에 따라 1~2분 소요될 수 있으니 창을 닫지 마세요.
-                          </p>
-                        </div>
-                      )}
+                      <div className="mt-5 rounded-[16px] border border-[#E3E9FF] bg-[#F6F8FF] px-4 py-3 text-center shadow-[0_10px_24px_rgba(95,117,177,0.08)]">
+                        <p className="text-[12px] font-medium leading-5 text-[#6C80DD] sm:text-[13px] sm:leading-6">
+                          AI가 계약서를 꼼꼼하게 분석하고 있어요.
+                          <br />
+                          파일 용량에 따라 약 3~7분 정도 소요될 수 있으니,
+                          <br />
+                          분석이 완료될 때까지 창을 닫지 말아주세요.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -339,18 +446,69 @@ export function Loading() {
 
               <p className="mt-3 text-[13px] text-slate-500">{Math.round(progress)}%</p>
 
-              {currentStep >= steps.length - 2 && progress < 100 && (
-                <div className="mt-4 flex items-start gap-2 rounded-[14px] bg-amber-50 px-3 py-2.5 text-left">
-                  <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-amber-500" />
-                  <p className="text-[12px] leading-5 text-amber-700">
-                    AI가 계약서를 꼼꼼히 검토하고 있어요. 문서 길이에 따라 1~2분 소요될 수 있으니 창을 닫지 마세요.
-                  </p>
-                </div>
-              )}
+              <div className="mt-4 rounded-[16px] border border-[#E3E9FF] bg-[#F6F8FF] px-4 py-3 text-center shadow-[0_10px_24px_rgba(95,117,177,0.08)]">
+                <p className="text-[12px] font-medium leading-5 text-[#6C80DD]">
+                  AI가 계약서를 꼼꼼하게 분석하고 있어요.
+                  <br />
+                  분석 완료 전까지 창을 닫지 말아주세요.
+                </p>
+              </div>
             </div>
           </section>
         </main>
       </div>
+
+      {showFailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 px-5 backdrop-blur-sm">
+          <div className="w-full max-w-[380px] rounded-[30px] border border-white/90 bg-white/90 p-6 text-center shadow-[0_30px_80px_rgba(15,23,42,0.18)] backdrop-blur">
+            <div
+              className="mx-auto flex h-14 w-14 items-center justify-center rounded-[20px] text-white shadow-lg"
+              style={{
+                background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+              }}
+            >
+              <AlertTriangle size={24} />
+            </div>
+
+            <h3 className="mt-5 text-[22px] font-semibold tracking-[-0.04em] text-slate-900">
+              분석에 실패했어요
+            </h3>
+
+            <p className="mt-3 text-[14px] leading-6 text-slate-500">
+              계약서 분석 중 문제가 발생했어요.
+              <br />
+              파일 형식이나 내용을 확인한 뒤 다시 시도해주세요.
+            </p>
+
+            {errorMessage && (
+              <div className="mt-4 rounded-[18px] border border-[#E3E9FF] bg-[#F6F8FF] px-4 py-3 text-left">
+                <p className="text-[12px] leading-5 text-slate-500">{errorMessage}</p>
+              </div>
+            )}
+
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/upload')}
+                className="h-[50px] rounded-[18px] border border-slate-200 bg-white text-[14px] font-semibold text-slate-600 shadow-sm transition-all hover:bg-slate-50"
+              >
+                다시 업로드
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate('/home')}
+                className="h-[50px] rounded-[18px] text-[14px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5"
+                style={{
+                  background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                }}
+              >
+                홈으로
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
