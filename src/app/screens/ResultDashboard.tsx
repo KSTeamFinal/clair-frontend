@@ -16,6 +16,9 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  Copy,
+  X,
+  Link2,
 } from 'lucide-react';
 
 type MessageType = 'text' | 'score' | 'summary' | 'risks';
@@ -196,6 +199,16 @@ export function ResultDashboard() {
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [isSending, setIsSending] = useState(false);
 
+  const [showShareCreateModal, setShowShareCreateModal] = useState(false);
+  const [showShareResultModal, setShowShareResultModal] = useState(false);
+  const [sharePassword, setSharePassword] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareError, setShareError] = useState('');
+  const [createdShareUrl, setCreatedShareUrl] = useState('');
+  const [createdSharePassword, setCreatedSharePassword] = useState('');
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+
   const [dashboardMessages, setDashboardMessages] = useState<Message[]>([
     { role: 'bot', text: '분석 결과를 불러오고 있어요.', type: 'text' },
   ]);
@@ -203,7 +216,6 @@ export function ResultDashboard() {
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
 
   const safetyScore = analysis.safetyScore;
-
   const scoreLabel =
     safetyScore >= 80 ? '안정적' : safetyScore >= 60 ? '확인 필요' : '주의 필요';
 
@@ -381,6 +393,108 @@ export function ResultDashboard() {
       console.error('PDF 다운로드 실패:', error);
       alert('PDF 다운로드에 실패했어요.');
     }
+  };
+
+  const showCopyToast = (message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+
+    window.setTimeout(() => {
+      setShowToast(false);
+    }, 2200);
+  };
+
+  const copyTextToClipboard = async (text: string) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    document.execCommand('copy');
+    textarea.remove();
+  };
+
+  const handleOpenShareModal = () => {
+    setSharePassword('');
+    setShareError('');
+    setShowShareCreateModal(true);
+  };
+
+  const handleCreateShare = async () => {
+    if (!contractId) {
+      setShareError('계약서 ID를 찾을 수 없어요.');
+      return;
+    }
+
+    if (!sharePassword.trim()) {
+      setShareError('공유 비밀번호를 입력해주세요.');
+      return;
+    }
+
+    try {
+      setIsSharing(true);
+      setShareError('');
+
+      const response = await client.post(`/api/v1/contracts/${contractId}/share`, {
+        password: sharePassword,
+        expire_days: 7,
+      });
+
+      const token = response.data?.token;
+      const shareId = response.data?.id ?? response.data?.share_id;
+      const shareUrlFromServer = response.data?.share_url ?? response.data?.url;
+
+      const shareUrl = shareUrlFromServer
+        ? shareUrlFromServer
+        : token
+          ? `${window.location.origin}/share/${token}`
+          : shareId
+            ? `${window.location.origin}/share/${shareId}`
+            : '';
+
+      if (!shareUrl) {
+        throw new Error('공유 URL을 응답에서 찾지 못했어요.');
+      }
+
+      setCreatedShareUrl(shareUrl);
+      setCreatedSharePassword(sharePassword);
+
+      setShowShareCreateModal(false);
+      setShowShareResultModal(true);
+      setSharePassword('');
+    } catch (error) {
+      console.error('공유 링크 생성 실패:', error);
+      setShareError('공유 링크 생성에 실패했어요. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleCopyShareUrl = async () => {
+    if (!createdShareUrl) return;
+
+    await copyTextToClipboard(createdShareUrl);
+    showCopyToast('공유 URL이 복사되었어요.');
+  };
+
+  const handleCopySharePassword = async () => {
+    if (!createdSharePassword) return;
+
+    await copyTextToClipboard(createdSharePassword);
+    showCopyToast('비밀번호가 복사되었어요.');
+  };
+
+  const handleOpenSharePage = () => {
+    if (!createdShareUrl) return;
+    window.open(createdShareUrl, '_blank', 'noopener,noreferrer');
   };
 
   const ScoreRing = ({
@@ -620,7 +734,8 @@ export function ResultDashboard() {
           <div className="ml-auto flex w-[120px] items-center justify-end gap-2 sm:w-[160px] sm:gap-3">
             <button
               type="button"
-              className="hidden h-[52px] min-w-[92px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-white/80 bg-white/82 px-5 text-[15px] font-medium text-slate-600 shadow-sm backdrop-blur lg:inline-flex"
+              onClick={handleOpenShareModal}
+              className="hidden h-[52px] min-w-[92px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-white/80 bg-white/82 px-5 text-[15px] font-medium text-slate-600 shadow-sm backdrop-blur transition-all hover:-translate-y-0.5 lg:inline-flex"
             >
               <Share2 size={16} className="shrink-0" />
               <span>공유</span>
@@ -1027,6 +1142,15 @@ export function ResultDashboard() {
                     <SummaryCards />
                   </div>
 
+                  <button
+                    type="button"
+                    onClick={handleOpenShareModal}
+                    className="mt-4 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-[18px] border border-white/90 bg-white text-[14px] font-semibold text-slate-600 shadow-sm transition-all hover:-translate-y-0.5"
+                  >
+                    <Share2 size={16} />
+                    공유 링크 만들기
+                  </button>
+
                   {!showMobileDetail && (
                     <button
                       type="button"
@@ -1162,6 +1286,210 @@ export function ResultDashboard() {
           </section>
         </main>
       </div>
+
+      {showShareCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 px-5 backdrop-blur-sm">
+          <div className="w-full max-w-[420px] rounded-[28px] border border-white/90 bg-white/95 p-6 shadow-[0_30px_80px_rgba(15,23,42,0.20)]">
+            <div
+              className="mx-auto flex h-14 w-14 items-center justify-center rounded-[20px] text-white shadow-lg"
+              style={{
+                background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+              }}
+            >
+              <Share2 size={22} />
+            </div>
+
+            <div className="mt-5 text-center">
+              <h3 className="text-[22px] font-semibold tracking-[-0.04em] text-slate-900">
+                공유 링크 만들기
+              </h3>
+              <p className="mt-2 text-[14px] leading-6 text-slate-500">
+                공유받는 사람이 입력할 비밀번호를 직접 설정해주세요.
+              </p>
+            </div>
+
+            <div className="mt-6">
+              <label className="mb-2 block text-[13px] font-semibold text-slate-600">
+                공유 비밀번호
+              </label>
+              <input
+                type="password"
+                value={sharePassword}
+                onChange={(e) => {
+                  setSharePassword(e.target.value);
+                  setShareError('');
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateShare();
+                }}
+                placeholder="비밀번호 입력"
+                autoComplete="new-password"
+                name="share-password"
+                id="share-password"
+                autoCorrect="off"
+                spellCheck={false}
+                className="h-[52px] w-full rounded-[18px] border border-slate-200 bg-white px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8]"
+              />
+
+              {shareError && (
+                <p className="mt-3 rounded-[14px] bg-red-50 px-4 py-3 text-[13px] font-medium text-red-500">
+                  {shareError}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowShareCreateModal(false);
+                  setSharePassword('');
+                  setShareError('');
+                }}
+                disabled={isSharing}
+                className="h-[52px] rounded-full border border-slate-200 bg-white text-[15px] font-semibold text-slate-600 transition-all hover:bg-slate-50 disabled:opacity-60"
+              >
+                취소
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCreateShare}
+                disabled={isSharing}
+                className="h-[52px] rounded-full text-[15px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:opacity-60"
+                style={{
+                  background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                }}
+              >
+                {isSharing ? '생성 중...' : '공유 링크 생성'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showShareResultModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 px-5 backdrop-blur-sm">
+          <div className="relative w-full max-w-[520px] rounded-[30px] border border-white/90 bg-white/95 px-7 py-8 shadow-[0_30px_90px_rgba(15,23,42,0.22)]">
+            <button
+              type="button"
+              onClick={() => setShowShareResultModal(false)}
+              className="absolute right-6 top-6 text-slate-400 transition-colors hover:text-slate-700"
+            >
+              <X size={20} />
+            </button>
+
+            <div
+              className="mx-auto flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg"
+              style={{
+                background: 'linear-gradient(135deg, #2EB872 0%, #4FD19A 100%)',
+              }}
+            >
+              <Link2 size={24} />
+            </div>
+
+            <div className="mt-5 text-center">
+              <h3 className="text-[24px] font-semibold tracking-[-0.04em] text-slate-900">
+                공유 링크가 생성되었어요
+              </h3>
+              <p className="mt-2 text-[14px] leading-6 text-slate-500">
+                공유 URL과 비밀번호를 상대방에게 함께 전달해주세요.
+              </p>
+            </div>
+
+            <div className="mt-7 space-y-5">
+              <div>
+                <label className="mb-2 block text-[13px] font-semibold text-slate-700">
+                  공유 URL
+                </label>
+                <div className="flex min-h-[58px] items-center gap-3 rounded-[18px] border border-slate-200 bg-white px-4">
+                  <p className="min-w-0 flex-1 break-all text-[13px] font-medium leading-5 text-slate-700">
+                    {createdShareUrl}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleCopyShareUrl}
+                    className="shrink-0 text-[#667AF2] transition-opacity hover:opacity-70"
+                  >
+                    <Copy size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[13px] font-semibold text-slate-700">
+                  비밀번호
+                </label>
+                <div className="flex h-[58px] items-center gap-3 rounded-[18px] border border-slate-200 bg-white px-4">
+                  <p className="min-w-0 flex-1 text-[16px] font-semibold text-slate-900">
+                    {createdSharePassword}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleCopySharePassword}
+                    className="shrink-0 text-[#667AF2] transition-opacity hover:opacity-70"
+                  >
+                    <Copy size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={handleCopyShareUrl}
+                className="h-[54px] rounded-[18px] border border-[#667AF2] bg-white text-[15px] font-semibold text-[#4F63D7] transition-all hover:bg-[#F8FAFF]"
+              >
+                URL 복사
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenSharePage}
+                className="h-[54px] rounded-[18px] text-[15px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5"
+                style={{
+                  background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                }}
+              >
+                공유 페이지 열기
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowShareResultModal(false)}
+              className="mt-5 w-full text-[15px] font-medium text-slate-500 transition-colors hover:text-slate-800"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showToast && (
+        <div className="fixed left-1/2 top-8 z-[60] w-[calc(100%-40px)] max-w-[420px] -translate-x-1/2 rounded-[22px] border border-white/90 bg-white/95 px-5 py-4 shadow-[0_20px_60px_rgba(15,23,42,0.18)] backdrop-blur">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white"
+              style={{
+                background: 'linear-gradient(135deg, #2EB872 0%, #4FD19A 100%)',
+              }}
+            >
+              <CheckCircle size={19} />
+            </div>
+
+            <div>
+              <p className="text-[15px] font-semibold text-slate-900">
+                {toastMessage}
+              </p>
+              <p className="mt-0.5 text-[13px] text-slate-500">
+                클립보드에 저장되었습니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

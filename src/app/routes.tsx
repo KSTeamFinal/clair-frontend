@@ -13,6 +13,7 @@ import ProfileScreen from './screens/ProfileScreen';
 import ChatSessionScreen from './screens/ChatSessionScreen';
 import ContractManagementScreen from './screens/ContractManagementScreen';
 import { PasswordReset } from './screens/PasswordReset';
+import SharePage from './screens/SharePage';
 
 export const router = createBrowserRouter([
   {
@@ -75,5 +76,12 @@ export const router = createBrowserRouter([
   path: '/password-reset',
   element: <PasswordReset />,
   },
+
+
+{
+  path: '/share/:token',
+  element: <SharePage />,
+},
+
 
 ]);

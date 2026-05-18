@@ -13,7 +13,12 @@ const client: AxiosInstance = axios.create({
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
 
-  if (token) {
+  const hasAuthorization =
+    Boolean(config.headers?.Authorization) ||
+    Boolean(config.headers?.authorization);
+
+  // 이미 Authorization 헤더가 있으면 덮어쓰지 않음
+  if (token && !hasAuthorization) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
@@ -25,16 +30,20 @@ client.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
     const requestUrl = error.config?.url ?? '';
+    const method = error.config?.method?.toLowerCase();
 
     const isContractPollingRequest =
-      requestUrl.includes('/api/v1/contracts/') &&
-      error.config?.method?.toLowerCase() === 'get';
+      requestUrl.includes('/api/v1/contracts/') && method === 'get';
+
+    const isShareRequest =
+      requestUrl.includes('/shares/') ||
+      requestUrl.includes('/share') ||
+      (requestUrl.includes('/api/v1/contracts/') && requestUrl.includes('/share'));
 
     if (status === 401) {
       console.warn('401 인증 오류 발생:', requestUrl);
 
-      // 계약서 분석 polling 중에는 자동 로그인 이동 금지
-      if (isContractPollingRequest) {
+      if (isContractPollingRequest || isShareRequest) {
         return Promise.reject(error);
       }
 
