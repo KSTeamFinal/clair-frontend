@@ -79,7 +79,6 @@ export function Loading() {
       }
 
       stopFakeProgress();
-
       timers.forEach((timer) => window.clearTimeout(timer));
     };
 
@@ -133,8 +132,10 @@ export function Loading() {
           status === 'analyzed' ||
           status === 'finished' ||
           !!data?.analysis ||
+          !!data?.analysis_result ||
           !!data?.analysis_completed_at ||
-          Array.isArray(data?.risk_clauses);
+          Array.isArray(data?.risk_clauses) ||
+          Array.isArray(data?.risks);
 
         if (isCompleted) {
           stopPolling();
@@ -167,8 +168,6 @@ export function Loading() {
 
           addBotMessage('분석 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.');
           setShowFailModal(true);
-
-          return;
         }
       } catch (error: any) {
         const status = error?.response?.status;
@@ -177,6 +176,11 @@ export function Loading() {
 
         if (status === 401 || status === 403) {
           addBotMessage('인증 상태를 다시 확인하고 있어요. 분석은 계속 진행 중입니다.');
+          return;
+        }
+
+        if (status === 404) {
+          addBotMessage('계약서 정보를 다시 확인하고 있어요. 분석은 계속 진행 중입니다.');
         }
       }
     };
@@ -204,7 +208,7 @@ export function Loading() {
 
       client
         .post(
-          `/api/v1/contracts/${contractId}/analyze`,
+          `/api/v1/contracts/${contractId}/request-analysis`,
           {},
           {
             timeout: 300000,
