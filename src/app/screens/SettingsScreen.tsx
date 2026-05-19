@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import client from '../../api/client';
 import {
@@ -16,6 +16,11 @@ type SettingItem = {
   value?: string;
   icon: React.ComponentType<{ className?: string }>;
   path?: string;
+};
+
+type UserInfo = {
+  nickname: string;
+  email: string;
 };
 
 const profileItems: SettingItem[] = [
@@ -139,14 +144,29 @@ export default function SettingsScreen() {
   const [chatOpen, setChatOpen] = useState(false);
   const [contractOpen, setContractOpen] = useState(false);
 
-  const profileSummary = useMemo(
-    () => ({
-      name: '지연 이',
-      email: 'user@clair.app',
-      role: '설정 및 관리',
-    }),
-    []
-  );
+  const [profileSummary, setProfileSummary] = useState({
+    name: '',
+    email: '',
+    role: '설정 및 관리',
+  });
+
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const res = await client.get('/api/v1/auth/me');
+
+        setProfileSummary({
+          name: res.data.nickname || '사용자',
+          email: res.data.email || '',
+          role: '설정 및 관리',
+        });
+      } catch (error) {
+        console.error('유저 정보 불러오기 실패:', error);
+      }
+    };
+
+    fetchUserInfo();
+  }, []);
 
   return (
     <div
@@ -202,16 +222,20 @@ export default function SettingsScreen() {
                     className="flex w-full items-center gap-4 text-left sm:gap-[18px]"
                   >
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#667AF2] to-[#8097F8] text-white shadow-sm sm:h-11 sm:w-11">
-                      <span className="text-sm font-semibold sm:text-base">지</span>
+                      <span className="text-sm font-semibold sm:text-base">
+                        {profileSummary.name?.charAt(0)}
+                      </span>
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <h2 className="truncate text-[14px] font-semibold text-slate-900 sm:text-[15px]">
                         {profileSummary.name}
                       </h2>
+
                       <p className="mt-0.5 truncate text-[11px] text-slate-500 sm:text-[12px]">
                         {profileSummary.email}
                       </p>
+
                       <p className="mt-1 inline-flex rounded-full bg-[#EEF2F9] px-2 py-0.5 text-[9px] font-medium text-[#6C80DD] sm:text-[10px]">
                         {profileSummary.role}
                       </p>
