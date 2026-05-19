@@ -17,6 +17,17 @@ export function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [nickname, setNickname] = useState('');
   const [contracts, setContracts] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const fetchUnreadCount = async () => {
+    try {
+      const res = await client.get('/api/v1/notifications/unread-count');
+
+      setUnreadCount(res.data.unread_count || 0);
+    } catch (error) {
+      console.error('읽지 않은 알림 수 조회 실패:', error);
+    }
+  };
 
   const fetchData = useCallback(async () => {
     try {
@@ -25,6 +36,7 @@ export function Home() {
       // 1. 내 정보 가져오기
       const userRes = await client.get('/api/v1/auth/me');
       const userData = userRes.data;
+
       if (userData) {
         setNickname(userData.nickname || userData.user?.email || '사용자');
       }
@@ -60,6 +72,7 @@ export function Home() {
 
   useEffect(() => {
     fetchData();
+    fetchUnreadCount();
   }, [fetchData, location.pathname, location.state]);
 
   const normalizeRiskLevel = (value: unknown) => {
@@ -183,7 +196,10 @@ export function Home() {
               className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/80 text-slate-600 shadow-sm backdrop-blur sm:h-11 sm:w-11"
             >
               <Bell size={18} />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500" />
+
+              {unreadCount > 0 && (
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500" />
+              )}
             </button>
           </div>
 
@@ -243,10 +259,17 @@ export function Home() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm text-slate-500">{stat.label}</p>
-                          <h3 className="mt-2 text-2xl font-semibold text-slate-900">{stat.value}</h3>
-                          <p className={`mt-2 text-sm ${stat.descriptionClass}`}>{stat.description}</p>
+                          <h3 className="mt-2 text-2xl font-semibold text-slate-900">
+                            {stat.value}
+                          </h3>
+                          <p className={`mt-2 text-sm ${stat.descriptionClass}`}>
+                            {stat.description}
+                          </p>
                         </div>
-                        <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${stat.iconBg}`}>
+
+                        <div
+                          className={`flex h-11 w-11 items-center justify-center rounded-2xl ${stat.iconBg}`}
+                        >
                           {stat.icon}
                         </div>
                       </div>
@@ -259,9 +282,14 @@ export function Home() {
             {/* 하단 계약서 목록 섹션 */}
             <section className="mt-6">
               <div className="rounded-[22px] bg-white/92 p-5 shadow-sm sm:rounded-[24px] sm:p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">최근 문서</h2>
-                  <button className="text-sm font-medium text-[#667AF2]">전체보기</button>
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">
+                    최근 문서
+                  </h2>
+
+                  <button className="text-sm font-medium text-[#667AF2]">
+                    전체보기
+                  </button>
                 </div>
 
                 <div className="space-y-3">
@@ -275,13 +303,18 @@ export function Home() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <h3 className="truncate text-sm font-semibold text-slate-900 sm:text-base">
-                              {doc.title || doc.original_filename || doc.file_name || '제목 없는 문서'}
+                              {doc.title ||
+                                doc.original_filename ||
+                                doc.file_name ||
+                                '제목 없는 문서'}
                             </h3>
+
                             <p className="mt-1 text-xs text-slate-500 sm:text-sm">
                               {doc.created_at
                                 ? new Date(doc.created_at).toLocaleDateString()
                                 : '날짜 정보 없음'}
                             </p>
+
                             <div className="mt-3 flex items-center gap-2">
                               <span
                                 className={`rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -290,10 +323,13 @@ export function Home() {
                                     : 'bg-blue-50 text-blue-600'
                                 }`}
                               >
-                                {doc.status === 'completed' ? '분석 완료' : '분석 중'}
+                                {doc.status === 'completed'
+                                  ? '분석 완료'
+                                  : '분석 중'}
                               </span>
                             </div>
                           </div>
+
                           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#667AF2] to-[#8097F8]">
                             <FileText size={18} className="text-white" />
                           </div>
@@ -302,7 +338,9 @@ export function Home() {
                     ))
                   ) : (
                     <div className="py-12 text-center text-slate-400">
-                      {isLoading ? '최근 문서를 불러오는 중입니다.' : '최근 분석한 문서가 없습니다.'}
+                      {isLoading
+                        ? '최근 문서를 불러오는 중입니다.'
+                        : '최근 분석한 문서가 없습니다.'}
                     </div>
                   )}
                 </div>

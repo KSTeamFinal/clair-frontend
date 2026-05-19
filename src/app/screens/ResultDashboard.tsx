@@ -429,54 +429,59 @@ export function ResultDashboard() {
   };
 
   const handleCreateShare = async () => {
-    if (!contractId) {
-      setShareError('계약서 ID를 찾을 수 없어요.');
-      return;
+  if (!contractId) {
+    setShareError('계약서 ID를 찾을 수 없어요.');
+    return;
+  }
+
+  if (!sharePassword.trim()) {
+    setShareError('공유 비밀번호를 입력해주세요.');
+    return;
+  }
+
+  try {
+    setIsSharing(true);
+    setShareError('');
+
+    const response = await client.post(`/api/v1/contracts/${contractId}/share`, {
+      password: sharePassword,
+      expire_days: 7,
+    });
+
+    const token = response.data?.token;
+    const shareId = response.data?.id ?? response.data?.share_id;
+    const shareUrlFromServer = response.data?.share_url ?? response.data?.url;
+
+    // ✅ 환경변수 기반 프론트 URL
+    const FRONT_URL =
+      import.meta.env.VITE_FRONT_URL || window.location.origin;
+
+    // ✅ 공유 URL 생성
+    const shareUrl = shareUrlFromServer
+      ? shareUrlFromServer
+      : token
+        ? `${FRONT_URL}/share/${token}`
+        : shareId
+          ? `${FRONT_URL}/share/${shareId}`
+          : '';
+
+    if (!shareUrl) {
+      throw new Error('공유 URL을 응답에서 찾지 못했어요.');
     }
 
-    if (!sharePassword.trim()) {
-      setShareError('공유 비밀번호를 입력해주세요.');
-      return;
-    }
+    setCreatedShareUrl(shareUrl);
+    setCreatedSharePassword(sharePassword);
 
-    try {
-      setIsSharing(true);
-      setShareError('');
-
-      const response = await client.post(`/api/v1/contracts/${contractId}/share`, {
-        password: sharePassword,
-        expire_days: 7,
-      });
-
-      const token = response.data?.token;
-      const shareId = response.data?.id ?? response.data?.share_id;
-      const shareUrlFromServer = response.data?.share_url ?? response.data?.url;
-
-      const shareUrl = shareUrlFromServer
-        ? shareUrlFromServer
-        : token
-          ? `${window.location.origin}/share/${token}`
-          : shareId
-            ? `${window.location.origin}/share/${shareId}`
-            : '';
-
-      if (!shareUrl) {
-        throw new Error('공유 URL을 응답에서 찾지 못했어요.');
-      }
-
-      setCreatedShareUrl(shareUrl);
-      setCreatedSharePassword(sharePassword);
-
-      setShowShareCreateModal(false);
-      setShowShareResultModal(true);
-      setSharePassword('');
-    } catch (error) {
-      console.error('공유 링크 생성 실패:', error);
-      setShareError('공유 링크 생성에 실패했어요. 잠시 후 다시 시도해주세요.');
-    } finally {
-      setIsSharing(false);
-    }
-  };
+    setShowShareCreateModal(false);
+    setShowShareResultModal(true);
+    setSharePassword('');
+  } catch (error) {
+    console.error('공유 링크 생성 실패:', error);
+    setShareError('공유 링크 생성에 실패했어요. 잠시 후 다시 시도해주세요.');
+  } finally {
+    setIsSharing(false);
+  }
+};
 
   const handleCopyShareUrl = async () => {
     if (!createdShareUrl) return;
