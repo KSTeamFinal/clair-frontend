@@ -1,107 +1,137 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Bell, Sparkles, ChevronDown } from 'lucide-react';
+import {
+  ChevronLeft,
+  Bell,
+  Sparkles,
+  ChevronDown,
+  FileCheck,
+  Share2,
+  AlertTriangle,
+  Info,
+} from 'lucide-react';
 import client from '../../api/client';
 
 type NotificationItem = {
   id: number;
-  section: 'today' | 'week';
+  notification_type: string;
   title: string;
-  description: string;
-  isUnread?: boolean;
-  time?: string;
+  content: string;
+  is_read: boolean;
+  contract_id?: number | null;
+  created_at: string;
 };
 
-const notifications: NotificationItem[] = [
-  {
-    id: 1,
-    section: 'today',
-    title: '계약서 검토가 완료되었어요',
-    description: '핵심 위험 조항과 수정 포인트를 확인해보세요.',
-    isUnread: true,
-    time: '방금 전',
-  },
-  {
-    id: 2,
-    section: 'today',
-    title: '새 템플릿 추천이 도착했어요',
-    description: '자주 사용하는 계약 유형 기반 추천 템플릿이에요.',
-    isUnread: true,
-    time: '12분 전',
-  },
-  {
-    id: 3,
-    section: 'today',
-    title: '보안 점검이 완료되었어요',
-    description: '계정과 문서 접근 상태가 안전하게 유지되고 있어요.',
-    isUnread: true,
-    time: '1시간 전',
-  },
-  {
-    id: 4,
-    section: 'week',
-    title: '이번 주 분석 리포트가 업데이트되었어요',
-    description: '위험 조항 비율과 평균 안정도를 볼 수 있어요.',
-    time: '어제',
-  },
-  {
-    id: 5,
-    section: 'week',
-    title: '다시 확인하면 좋은 계약서가 있어요',
-    description: '재검토를 추천하는 문서를 모아두었어요.',
-    time: '2일 전',
-  },
-  {
-    id: 6,
-    section: 'week',
-    title: '계약서 관리 화면이 새로 정리되었어요',
-    description: '문서를 더 쉽게 찾고 비교할 수 있어요.',
-    time: '3일 전',
-  },
-  {
-    id: 7,
-    section: 'week',
-    title: '맞춤 검토 팁이 준비되었어요',
-    description: '자주 놓치는 문구 중심 점검 포인트예요.',
-    time: '이번 주',
-  },
-];
+function formatNotificationTime(createdAt: string) {
+  if (!createdAt) return '';
 
-function NotificationIcon() {
+  const date = new Date(createdAt);
+
+  return date.toLocaleDateString('ko-KR', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function isToday(createdAt: string) {
+  const date = new Date(createdAt);
+  const today = new Date();
+
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
+}
+
+function NotificationIcon({ type }: { type: string }) {
+  const normalizedType = type?.toLowerCase();
+  const iconClass = 'h-4 w-4 sm:h-[18px] sm:w-[18px]';
+
+  let icon = <Sparkles className={`${iconClass} text-[#6C80DD]`} />;
+
+  if (
+    normalizedType?.includes('analysis') ||
+    normalizedType?.includes('contract') ||
+    normalizedType?.includes('complete')
+  ) {
+    icon = <FileCheck className={`${iconClass} text-[#6C80DD]`} />;
+  } else if (normalizedType?.includes('share')) {
+    icon = <Share2 className={`${iconClass} text-[#6C80DD]`} />;
+  } else if (
+    normalizedType?.includes('risk') ||
+    normalizedType?.includes('warning') ||
+    normalizedType?.includes('danger')
+  ) {
+    icon = <AlertTriangle className={`${iconClass} text-[#6C80DD]`} />;
+  } else if (normalizedType?.includes('system')) {
+    icon = <Info className={`${iconClass} text-[#6C80DD]`} />;
+  }
+
   return (
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#EEF2F9] sm:h-10 sm:w-10 sm:rounded-2xl">
-      <Sparkles className="h-4 w-4 text-[#6C80DD] sm:h-[18px] sm:w-[18px]" />
+      {icon}
     </div>
   );
 }
 
-function NotificationCard({ item }: { item: NotificationItem }) {
+function NotificationCard({
+  item,
+  onClick,
+}: {
+  item: NotificationItem;
+  onClick: () => void;
+}) {
   return (
-    <div className="rounded-[16px] border border-white/90 bg-white/88 p-3 shadow-sm backdrop-blur transition hover:bg-white sm:rounded-[18px] sm:p-3.5">
-      <div className="flex items-start gap-2.5 sm:gap-3">
-        <NotificationIcon />
+    <button
+      type="button"
+      onClick={onClick}
+      className="block w-full text-left transition duration-150 active:scale-[0.985]"
+    >
+      <div
+        className={`rounded-[16px] border p-3 backdrop-blur transition-all duration-200 sm:rounded-[18px] sm:p-3.5 ${
+          item.is_read
+            ? 'border-white/80 bg-white/70 opacity-80 shadow-sm hover:opacity-100'
+            : 'border-[#DCE6FF] bg-white shadow-md'
+        } hover:-translate-y-0.5 hover:bg-white hover:shadow-lg`}
+      >
+        <div className="flex items-start gap-2.5 sm:gap-3">
+          <NotificationIcon type={item.notification_type} />
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="text-[13px] font-semibold leading-5 text-slate-900 sm:text-[14px]">
-                {item.title}
-              </h3>
-              <p className="mt-0.5 text-[11px] leading-4 text-slate-500 sm:text-[12px] sm:leading-5 line-clamp-2">
-                {item.description}
-              </p>
-            </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3
+                  className={`text-[13px] font-semibold leading-5 sm:text-[14px] ${
+                    item.is_read ? 'text-slate-700' : 'text-slate-900'
+                  }`}
+                >
+                  {item.title}
+                </h3>
 
-            <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
-              {item.isUnread && <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />}
-              <span className="text-[10px] font-medium text-slate-400 sm:text-[11px]">
-                {item.time}
-              </span>
+                <p
+                  className={`mt-0.5 text-[11px] leading-4 sm:text-[12px] sm:leading-5 line-clamp-2 ${
+                    item.is_read ? 'text-slate-400' : 'text-slate-500'
+                  }`}
+                >
+                  {item.content}
+                </p>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+                {!item.is_read && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                )}
+
+                <span className="text-[10px] font-medium text-slate-400 sm:text-[11px]">
+                  {formatNotificationTime(item.created_at)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -126,22 +156,24 @@ function NotificationSection({
         <button
           type="button"
           onClick={onToggle}
-          className="flex w-full items-center justify-between gap-3 text-left"
+          className="flex w-full items-center justify-between gap-3 text-left transition duration-200 active:scale-[0.99]"
         >
           <div>
             <h2 className="text-[15px] font-semibold text-slate-900 sm:text-base">
               {title}
             </h2>
+
             <p className="mt-0.5 text-[11px] text-slate-400 sm:text-xs">
               {count} items
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="rounded-full bg-[#EEF2F9] px-2 py-1 text-[10px] font-medium text-[#6C80DD] sm:text-[11px]">
+            <span className="rounded-full bg-[#EEF2F9] px-2 py-1 text-[10px] font-medium text-[#6C80DD] transition hover:bg-[#E3E9F6] sm:text-[11px]">
               {open ? '닫기' : '열기'}
             </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFF]">
+
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFF] transition hover:bg-[#EEF2F9]">
               <ChevronDown
                 className={`h-4 w-4 text-slate-500 transition-transform ${
                   open ? 'rotate-180' : ''
@@ -163,20 +195,101 @@ function NotificationSection({
 
 export default function NotificationScreen() {
   const navigate = useNavigate();
+
   const [todayOpen, setTodayOpen] = useState(true);
   const [weekOpen, setWeekOpen] = useState(false);
 
-  const todayItems = useMemo(
-    () => notifications.filter((item) => item.section === 'today'),
-    []
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const [page, setPage] = useState(1);
+
+  const limit = 5;
+
+  const totalPage = Math.max(1, Math.ceil(total / limit));
+
+  const todayItems = notifications.filter((item) =>
+    isToday(item.created_at)
   );
 
-  const weekItems = useMemo(
-    () => notifications.filter((item) => item.section === 'week'),
-    []
+  const weekItems = notifications.filter(
+    (item) => !isToday(item.created_at)
   );
 
-  const unreadCount = notifications.filter((item) => item.isUnread).length;
+  useEffect(() => {
+    fetchNotifications(page);
+  }, [page]);
+
+  const fetchNotifications = async (pageNumber: number) => {
+    try {
+      setLoading(true);
+
+      const skip = (pageNumber - 1) * limit;
+
+      const res = await client.get(
+        `/api/v1/notifications?skip=${skip}&limit=${limit}`
+      );
+
+      setNotifications(res.data.notifications || []);
+      setTotal(res.data.total || 0);
+      setUnreadCount(res.data.unread_count || 0);
+    } catch (error) {
+      console.error('알림 조회 실패:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReadNotification = async (item: NotificationItem) => {
+    try {
+      if (!item.is_read) {
+        await client.patch(`/api/v1/notifications/${item.id}/read`);
+
+        setNotifications((prev) =>
+          prev.map((notification) =>
+            notification.id === item.id
+              ? { ...notification, is_read: true }
+              : notification
+          )
+        );
+
+        setUnreadCount((prev) => Math.max(prev - 1, 0));
+      }
+
+      if (item.contract_id) {
+        navigate(`/result/${item.contract_id}`);
+      }
+    } catch (error) {
+      console.error('알림 클릭 처리 실패:', error);
+    }
+  };
+
+  const handleReadAll = async () => {
+    try {
+      await client.patch('/api/v1/notifications/read-all');
+
+      setNotifications((prev) =>
+        prev.map((item) => ({
+          ...item,
+          is_read: true,
+        }))
+      );
+
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('전체 읽음 처리 실패:', error);
+    }
+  };
+
+  const handlePrevPage = () => {
+    setPage((prev) => Math.max(prev - 1, 1));
+  };
+
+  const handleNextPage = () => {
+    setPage((prev) => Math.min(prev + 1, totalPage));
+  };
 
   return (
     <div
@@ -191,7 +304,7 @@ export default function NotificationScreen() {
           <div className="flex w-[48px] items-center justify-start sm:w-[56px]">
             <button
               onClick={() => navigate(-1)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/80 text-slate-600 shadow-sm backdrop-blur transition hover:bg-white sm:h-11 sm:w-11"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/80 text-slate-600 shadow-sm backdrop-blur transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-md active:scale-95 sm:h-11 sm:w-11"
               aria-label="뒤로가기"
             >
               <ChevronLeft className="h-5 w-5" />
@@ -205,9 +318,10 @@ export default function NotificationScreen() {
           </div>
 
           <div className="flex w-[48px] items-center justify-end sm:w-[56px]">
-            <button className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/80 text-slate-600 shadow-sm backdrop-blur sm:h-11 sm:w-11">
+            <button className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/80 text-slate-600 shadow-sm backdrop-blur transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-md active:scale-95 sm:h-11 sm:w-11">
               <Bell size={18} />
-              {unreadCount > 0 && (
+
+              {!loading && unreadCount > 0 && (
                 <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500" />
               )}
             </button>
@@ -222,13 +336,26 @@ export default function NotificationScreen() {
                   Notifications Center
                 </div>
 
-                <div className="mt-2.5 flex items-center gap-2.5 sm:gap-3">
-                  <h1 className="text-[22px] font-semibold leading-[1.15] text-slate-900 sm:text-[28px] md:text-[34px]">
-                    알림
-                  </h1>
-                  <div className="flex h-7 min-w-[28px] items-center justify-center rounded-full bg-rose-500 px-2 text-[12px] font-semibold text-white sm:h-8 sm:min-w-[32px] sm:px-2.5 sm:text-[13px]">
-                    {unreadCount}
+                <div className="mt-2.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    <h1 className="text-[22px] font-semibold leading-[1.15] text-slate-900 sm:text-[28px] md:text-[34px]">
+                      알림
+                    </h1>
+
+                    <div className="flex h-7 min-w-[28px] items-center justify-center rounded-full bg-rose-500 px-2 text-[12px] font-semibold text-white sm:h-8 sm:min-w-[32px] sm:px-2.5 sm:text-[13px]">
+                      {unreadCount}
+                    </div>
                   </div>
+
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleReadAll}
+                      className="shrink-0 rounded-full bg-[#EEF2F9] px-3 py-1.5 text-[11px] font-medium text-[#6C80DD] transition duration-200 hover:-translate-y-0.5 hover:bg-[#E3E9F6] hover:shadow-sm active:scale-95 sm:px-3.5 sm:text-[12px]"
+                    >
+                      전체 읽음
+                    </button>
+                  )}
                 </div>
 
                 <p className="mt-2 max-w-[520px] text-[11px] leading-5 text-slate-500 sm:text-[12px] sm:leading-5 md:text-[13px]">
@@ -243,9 +370,23 @@ export default function NotificationScreen() {
               open={todayOpen}
               onToggle={() => setTodayOpen((prev) => !prev)}
             >
-              {todayItems.map((item) => (
-                <NotificationCard key={item.id} item={item} />
-              ))}
+              {loading ? (
+                <div className="rounded-[16px] border border-white/90 bg-white/88 p-3 text-[12px] text-slate-400 shadow-sm backdrop-blur sm:rounded-[18px] sm:p-3.5">
+                  알림을 불러오는 중이에요.
+                </div>
+              ) : todayItems.length > 0 ? (
+                todayItems.map((item) => (
+                  <NotificationCard
+                    key={item.id}
+                    item={item}
+                    onClick={() => handleReadNotification(item)}
+                  />
+                ))
+              ) : (
+                <div className="rounded-[16px] border border-white/90 bg-white/88 p-3 text-[12px] text-slate-400 shadow-sm backdrop-blur sm:rounded-[18px] sm:p-3.5">
+                  오늘 도착한 알림이 없어요.
+                </div>
+              )}
             </NotificationSection>
 
             <NotificationSection
@@ -254,10 +395,50 @@ export default function NotificationScreen() {
               open={weekOpen}
               onToggle={() => setWeekOpen((prev) => !prev)}
             >
-              {weekItems.map((item) => (
-                <NotificationCard key={item.id} item={item} />
-              ))}
+              {loading ? (
+                <div className="rounded-[16px] border border-white/90 bg-white/88 p-3 text-[12px] text-slate-400 shadow-sm backdrop-blur sm:rounded-[18px] sm:p-3.5">
+                  알림을 불러오는 중이에요.
+                </div>
+              ) : weekItems.length > 0 ? (
+                weekItems.map((item) => (
+                  <NotificationCard
+                    key={item.id}
+                    item={item}
+                    onClick={() => handleReadNotification(item)}
+                  />
+                ))
+              ) : (
+                <div className="rounded-[16px] border border-white/90 bg-white/88 p-3 text-[12px] text-slate-400 shadow-sm backdrop-blur sm:rounded-[18px] sm:p-3.5">
+                  이번 주 알림이 없어요.
+                </div>
+              )}
             </NotificationSection>
+
+            {!loading && total > limit && (
+              <div className="mt-4 flex items-center justify-center gap-3 sm:mt-5 sm:gap-4 md:gap-4">
+                <button
+                  type="button"
+                  onClick={handlePrevPage}
+                  disabled={page === 1}
+                  className="inline-flex h-9 min-w-[58px] items-center justify-center rounded-full bg-white/90 px-4 text-[13px] font-medium leading-none text-slate-500 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 sm:h-10 sm:min-w-[70px] sm:px-5 sm:text-[14px] md:h-10 md:min-w-[74px]"
+                >
+                  이전
+                </button>
+
+                <span className="inline-flex h-9 min-w-[64px] items-center justify-center rounded-full bg-[#EEF2F9] px-4 text-[13px] font-semibold leading-none text-[#6C80DD] shadow-sm sm:h-10 sm:min-w-[76px] sm:px-5 sm:text-[14px] md:h-10 md:min-w-[80px]">
+                  {page} / {totalPage}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={handleNextPage}
+                  disabled={page === totalPage}
+                  className="inline-flex h-9 min-w-[58px] items-center justify-center rounded-full bg-white/90 px-4 text-[13px] font-medium leading-none text-slate-500 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 sm:h-10 sm:min-w-[70px] sm:px-5 sm:text-[14px] md:h-10 md:min-w-[74px]"
+                >
+                  다음
+                </button>
+              </div>
+            )}
           </div>
         </main>
       </div>
