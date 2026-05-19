@@ -18,6 +18,7 @@ export function Home() {
   const [nickname, setNickname] = useState('');
   const [contracts, setContracts] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showAllContracts, setShowAllContracts] = useState(false);
 
   const fetchUnreadCount = async () => {
     try {
@@ -131,6 +132,10 @@ export function Home() {
       Math.min(100, 100 - highCount * 15 - mediumCount * 8 - lowCount * 2)
     );
   };
+
+  const visibleContracts = showAllContracts
+    ? contracts
+    : contracts.slice(0, 3);
 
   const completedContracts = contracts.filter(
     (contract) => contract.status === 'completed'
@@ -287,14 +292,20 @@ export function Home() {
                     최근 문서
                   </h2>
 
-                  <button className="text-sm font-medium text-[#667AF2]">
-                    전체보기
-                  </button>
+                  {contracts.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllContracts((prev) => !prev)}
+                      className="text-sm font-medium text-[#667AF2] transition hover:opacity-80"
+                    >
+                      {showAllContracts ? '접기' : '전체보기'}
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-3">
                   {contracts.length > 0 ? (
-                    contracts.map((doc) => (
+                    visibleContracts.map((doc) => (
                       <div
                         key={doc.id}
                         onClick={() => navigate(`/result/${doc.id}`)}
