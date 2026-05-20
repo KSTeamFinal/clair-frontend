@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -14,6 +14,48 @@ import {
 } from 'lucide-react';
 
 import client from '../../api/client';
+
+type RawMessage = {
+  id?: number;
+  sender?: 'USER' | 'AI' | 'user' | 'assistant' | string;
+  role?: 'user' | 'assistant' | string;
+  content?: string;
+  message?: string;
+  text?: string;
+  created_at?: string;
+  createdAt?: string;
+};
+
+type RawSession = {
+  id: number;
+  contract_id?: number | null;
+  title?: string;
+  total_message_count?: number;
+  message_count?: number;
+  messageCount?: number;
+  last_message_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  preview?: string;
+  last_message?: string;
+  first_question?: string | null;
+  last_question?: string | null;
+  last_answer?: string | null;
+  messages?: RawMessage[];
+};
+
+type RawSessionListResponse = {
+  total?: number;
+  sessions?: RawSession[];
+};
+
+type RawMessagesListResponse = {
+  session_id?: number;
+  total?: number;
+  messages?: RawMessage[];
+};
 
 type Message = {
   id: number;
@@ -32,86 +74,99 @@ type Session = {
   messages: Message[];
 };
 
-const initialSessions: Session[] = [
-  {
-    id: 1,
-    title: '근로계약서 검토 상담',
-    createdAt: '2026.04.04',
-    updatedAt: '방금 전',
-    messageCount: 6,
-    preview: '근로계약서의 수습기간 조항이 적절한지 검토해줘.',
-    messages: [
-      {
-        id: 1,
-        role: 'user',
-        text: '근로계약서의 수습기간 조항이 적절한지 검토해줘.',
-        time: '오후 3:10',
-      },
-      {
-        id: 2,
-        role: 'assistant',
-        text: '수습기간의 길이, 감액 비율, 평가 기준이 함께 명시되어 있는지 확인하는 것이 좋아요.',
-        time: '오후 3:11',
-      },
-      {
-        id: 3,
-        role: 'user',
-        text: '퇴사 통보 조항도 같이 봐줘.',
-        time: '오후 3:12',
-      },
-      {
-        id: 4,
-        role: 'assistant',
-        text: '일방적으로 불리한 통보 기간이 설정되어 있지 않은지 확인해볼게요.',
-        time: '오후 3:13',
-      },
-    ],
-  },
-  {
-    id: 2,
-    title: '임대차 계약 상담',
-    createdAt: '2026.04.03',
-    updatedAt: '1시간 전',
-    messageCount: 4,
-    preview: '상가 임대차 계약서의 원상복구 조항이 과도한지 궁금해.',
-    messages: [
-      {
-        id: 1,
-        role: 'user',
-        text: '상가 임대차 계약서의 원상복구 조항이 과도한지 궁금해.',
-        time: '오전 11:02',
-      },
-      {
-        id: 2,
-        role: 'assistant',
-        text: '임차인의 통상적인 사용 범위를 넘는 의무를 지우는지 먼저 확인해봐야 해요.',
-        time: '오전 11:03',
-      },
-    ],
-  },
-  {
-    id: 3,
-    title: '프리랜서 계약 문의',
-    createdAt: '2026.04.02',
-    updatedAt: '어제',
-    messageCount: 5,
-    preview: '저작권 귀속 조항이 프리랜서에게 너무 불리한 것 같아.',
-    messages: [
-      {
-        id: 1,
-        role: 'user',
-        text: '저작권 귀속 조항이 프리랜서에게 너무 불리한 것 같아.',
-        time: '오후 8:41',
-      },
-      {
-        id: 2,
-        role: 'assistant',
-        text: '대가 지급 범위와 2차적 저작물 활용 권한까지 함께 봐야 정확히 판단할 수 있어요.',
-        time: '오후 8:42',
-      },
-    ],
-  },
-];
+const FALLBACK_AI_ANSWER =
+  '이 질문은 현재 선택된 계약서 정보만으로는 정확히 답변하기 어려워요. 계약서 원문이나 관련 조항을 조금 더 구체적으로 입력해주시면, 해당 내용을 기준으로 다시 검토해드릴게요.';
+
+const formatDate = (value?: string | null) => {
+  if (!value) return '-';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+};
+
+const formatTime = (value?: string | null) => {
+  if (!value) return '방금 전';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleTimeString('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const normalizeMessage = (message: RawMessage, index: number): Message => {
+  const sender = String(message.sender ?? message.role ?? '').toLowerCase();
+  const rawContent = message.content ?? message.message ?? message.text ?? '';
+
+  const isAssistant =
+    sender === 'ai' ||
+    sender === 'assistant' ||
+    sender === 'bot' ||
+    sender === 'system' ||
+    sender === 'clair' ||
+    sender === 'clair_ai' ||
+    sender === 'claude' ||
+    sender.includes('ai') ||
+    sender.includes('assistant') ||
+    rawContent.includes('계약서를 업로드하거나 질문을 입력해주세요.');
+
+  const isWeakAiAnswer =
+    isAssistant &&
+    (!rawContent.trim() ||
+      rawContent.includes('답변할 수 없습니다') ||
+      rawContent.includes('알 수 없습니다') ||
+      rawContent.includes('정보가 없습니다') ||
+      rawContent.includes('확인할 수 없습니다'));
+
+  return {
+    id: message.id ?? Date.now() + index,
+    role: isAssistant ? 'assistant' : 'user',
+    text: isWeakAiAnswer ? FALLBACK_AI_ANSWER : rawContent,
+    time: formatTime(message.created_at ?? message.createdAt),
+  };
+};
+
+const normalizeSession = (session: RawSession): Session => {
+  const messages = (session.messages ?? []).map(normalizeMessage);
+  const lastMessage = messages[messages.length - 1];
+
+  return {
+    id: session.id,
+    title: session.title ?? `채팅 세션 ${session.id}`,
+    createdAt: formatDate(session.created_at ?? session.createdAt),
+    updatedAt: formatDate(
+      session.last_message_at ?? session.updated_at ?? session.updatedAt
+    ),
+    messageCount:
+      session.total_message_count ??
+      session.message_count ??
+      session.messageCount ??
+      messages.length ??
+      0,
+    preview:
+      session.preview ??
+      session.last_question ??
+      session.first_question ??
+      session.last_message ??
+      lastMessage?.text ??
+      '새로운 상담을 시작해보세요.',
+    messages,
+  };
+};
 
 function SessionListItem({
   session,
@@ -190,7 +245,16 @@ function MessageBubble({ message }: { message: Message }) {
             : 'border border-slate-200 bg-white text-slate-700'
         }`}
       >
+        <p
+          className={`mb-1 text-[10px] font-semibold ${
+            isUser ? 'text-white/80' : 'text-[#6C80DD]'
+          }`}
+        >
+          {isUser ? '나' : 'CLAIR AI'}
+        </p>
+
         <p className="text-[11px] leading-5 sm:text-[12px]">{message.text}</p>
+
         <p
           className={`mt-1 text-[10px] ${
             isUser ? 'text-white/75' : 'text-slate-400'
@@ -206,15 +270,64 @@ function MessageBubble({ message }: { message: Message }) {
 export default function ChatSessionScreen() {
   const navigate = useNavigate();
 
-  const [sessions, setSessions] = useState<Session[]>(initialSessions);
-  const [selectedSessionId, setSelectedSessionId] = useState<number>(1);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<number>(0);
   const [search, setSearch] = useState('');
   const [messageInput, setMessageInput] = useState('');
-  const [listOpen, setListOpen] = useState(true);
+  const [listOpen, setListOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [answerStatus, setAnswerStatus] = useState<
+    'idle' | 'thinking' | 'done'
+  >('idle');
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const fetchSessions = async () => {
+    try {
+      const res = await client.get<RawSessionListResponse | RawSession[]>(
+        '/api/v1/chat/sessions'
+      );
+
+      const rawSessions = Array.isArray(res.data)
+        ? res.data
+        : res.data.sessions ?? [];
+
+      const normalizedSessions = rawSessions.map(normalizeSession);
+
+      setSessions((prev) => {
+        const selectedDetail = prev.find(
+          (session) =>
+            session.id === selectedSessionId && session.messages.length > 0
+        );
+
+        if (!selectedDetail) return normalizedSessions;
+
+        return normalizedSessions.map((session) =>
+          session.id === selectedDetail.id
+            ? {
+                ...session,
+                messages: selectedDetail.messages,
+              }
+            : session
+        );
+      });
+
+      if (normalizedSessions.length > 0 && selectedSessionId === 0) {
+        setSelectedSessionId(normalizedSessions[0].id);
+      }
+    } catch (error) {
+      console.error('채팅 세션 목록 조회 실패:', error);
+      setSessions([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchSessions();
+  }, []);
 
   const filteredSessions = useMemo(() => {
     return sessions.filter(
@@ -224,10 +337,21 @@ export default function ChatSessionScreen() {
     );
   }, [sessions, search]);
 
+  const visibleSessions = listOpen
+    ? filteredSessions
+    : filteredSessions.slice(0, 5);
+
   const selectedSession =
     sessions.find((session) => session.id === selectedSessionId) ??
     sessions[0] ??
     null;
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'end',
+    });
+  }, [selectedSession?.messages.length, isSending, answerStatus]);
 
   const firstUserMessage =
     selectedSession?.messages.find((message) => message.role === 'user') ?? null;
@@ -242,21 +366,51 @@ export default function ChatSessionScreen() {
       .reverse()
       .find((message) => message.role === 'assistant') ?? null;
 
-  const handleCreateSession = () => {
-    const newSession: Session = {
-      id: Date.now(),
-      title: `새 채팅 세션 ${sessions.length + 1}`,
-      createdAt: '오늘',
-      updatedAt: '방금 전',
-      messageCount: 0,
-      preview: '새로운 상담을 시작해보세요.',
-      messages: [],
-    };
+  const refreshSelectedSession = async (sessionId: number) => {
+    const sessionRes = await client.get<RawSession>(
+      `/api/v1/chat/sessions/${sessionId}`
+    );
 
-    setSessions((prev) => [newSession, ...prev]);
-    setSelectedSessionId(newSession.id);
+    const messageRes = await client.get<RawMessagesListResponse | RawMessage[]>(
+      `/api/v1/chat/sessions/${sessionId}/messages`
+    );
+
+    const rawMessages = Array.isArray(messageRes.data)
+      ? messageRes.data
+      : messageRes.data.messages ?? [];
+
+    const updatedSession = normalizeSession({
+      ...sessionRes.data,
+      messages: rawMessages,
+    });
+
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId ? updatedSession : session
+      )
+    );
+
+    setSelectedSessionId(sessionId);
     setDetailOpen(true);
-    setMessageInput('');
+  };
+
+  const handleCreateSession = async () => {
+    try {
+      const res = await client.post('/api/v1/chat/sessions', {
+        contract_id: null,
+        title: `새 채팅 세션 ${sessions.length + 1}`,
+      });
+
+      const newSession = normalizeSession(res.data);
+
+      setSessions((prev) => [newSession, ...prev]);
+      setSelectedSessionId(newSession.id);
+      setDetailOpen(true);
+      setMessageInput('');
+      setAnswerStatus('idle');
+    } catch (error) {
+      console.error('채팅 세션 생성 실패:', error);
+    }
   };
 
   const handleOpenDeleteModal = (sessionId: number) => {
@@ -269,59 +423,87 @@ export default function ChatSessionScreen() {
     setDeleteTargetId(null);
   };
 
-  const handleConfirmDeleteSession = () => {
+  const handleConfirmDeleteSession = async () => {
     if (deleteTargetId === null) return;
 
-    const next = sessions.filter((session) => session.id !== deleteTargetId);
-    setSessions(next);
+    try {
+      await client.delete(`/api/v1/chat/sessions/${deleteTargetId}`);
 
-    if (selectedSessionId === deleteTargetId) {
-      setSelectedSessionId(next[0]?.id ?? 0);
+      const next = sessions.filter((session) => session.id !== deleteTargetId);
+
+      setSessions(next);
+
+      if (selectedSessionId === deleteTargetId) {
+        setSelectedSessionId(next[0]?.id ?? 0);
+      }
+
+      setShowDeleteModal(false);
+      setDeleteTargetId(null);
+    } catch (error) {
+      console.error('채팅 세션 삭제 실패:', error);
     }
-
-    setShowDeleteModal(false);
-    setDeleteTargetId(null);
   };
 
-  const handleSelectSession = (sessionId: number) => {
-    setSelectedSessionId(sessionId);
-    setDetailOpen(true);
+  const handleSelectSession = async (sessionId: number) => {
+    try {
+      await refreshSelectedSession(sessionId);
+      setAnswerStatus('idle');
+    } catch (error) {
+      console.error('채팅 세션 상세 조회 실패:', error);
+      setSelectedSessionId(sessionId);
+      setDetailOpen(true);
+    }
   };
 
-  const handleSendMessage = () => {
-    if (!messageInput.trim() || !selectedSession) return;
+  const handleSendMessage = async () => {
+    if (!messageInput.trim() || !selectedSession || isSending) return;
 
+    const currentSessionId = selectedSession.id;
     const nextText = messageInput.trim();
 
+    setMessageInput('');
+    setIsSending(true);
+    setAnswerStatus('thinking');
+
+    const optimisticUserMessage: Message = {
+      id: Date.now(),
+      role: 'user',
+      text: nextText,
+      time: '방금 전',
+    };
+
     setSessions((prev) =>
-      prev.map((session) => {
-        if (session.id !== selectedSession.id) return session;
-
-        const userMessage: Message = {
-          id: Date.now(),
-          role: 'user',
-          text: nextText,
-          time: '방금 전',
-        };
-
-        const assistantMessage: Message = {
-          id: Date.now() + 1,
-          role: 'assistant',
-          text: '메시지가 전송되었어요. 이 영역에 실제 챗봇 응답을 연결하면 됩니다.',
-          time: '방금 전',
-        };
-
-        return {
-          ...session,
-          updatedAt: '방금 전',
-          preview: nextText,
-          messageCount: session.messageCount + 2,
-          messages: [...session.messages, userMessage, assistantMessage],
-        };
-      })
+      prev.map((session) =>
+        session.id === currentSessionId
+          ? {
+              ...session,
+              preview: nextText,
+              messageCount: session.messageCount + 1,
+              messages: [...session.messages, optimisticUserMessage],
+            }
+          : session
+      )
     );
 
-    setMessageInput('');
+    try {
+      await client.post(`/api/v1/chat/sessions/${currentSessionId}/messages`, {
+        content: nextText,
+        message_type: 'question',
+      });
+
+      await refreshSelectedSession(currentSessionId);
+
+      setAnswerStatus('done');
+
+      setTimeout(() => {
+        setAnswerStatus('idle');
+      }, 1800);
+    } catch (error) {
+      console.error('메시지 전송 실패:', error);
+      setAnswerStatus('idle');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -376,7 +558,7 @@ export default function ChatSessionScreen() {
                 <button
                   type="button"
                   onClick={() => setListOpen((prev) => !prev)}
-                  className="flex w-full items-center justify-between gap-3 text-left lg:hidden"
+                  className="flex w-full items-center justify-between gap-3 text-left"
                 >
                   <div>
                     <h2 className="text-[14px] font-semibold text-slate-900">
@@ -396,9 +578,7 @@ export default function ChatSessionScreen() {
                   </div>
                 </button>
 
-                <div
-                  className={`${listOpen ? 'block' : 'hidden'} mt-3 lg:mt-0 lg:block`}
-                >
+                <div className="mt-3">
                   <button
                     type="button"
                     onClick={handleCreateSession}
@@ -429,7 +609,7 @@ export default function ChatSessionScreen() {
                   </div>
 
                   <div className="mt-3 space-y-2.5">
-                    {filteredSessions.map((session) => (
+                    {visibleSessions.map((session) => (
                       <SessionListItem
                         key={session.id}
                         session={session}
@@ -443,6 +623,23 @@ export default function ChatSessionScreen() {
                       <div className="rounded-[16px] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-[12px] text-slate-400 sm:text-[13px]">
                         검색된 채팅 세션이 없어요.
                       </div>
+                    )}
+
+                    {filteredSessions.length > 5 && (
+                      <button
+                        type="button"
+                        onClick={() => setListOpen((prev) => !prev)}
+                        className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white py-2 text-[11px] font-medium text-slate-500 transition hover:bg-[#F8FAFF]"
+                      >
+                        {listOpen
+                          ? '세션 접기'
+                          : `전체 ${filteredSessions.length}개 보기`}
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 transition-transform ${
+                            listOpen ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -575,6 +772,36 @@ export default function ChatSessionScreen() {
                           {selectedSession.messages.map((message) => (
                             <MessageBubble key={message.id} message={message} />
                           ))}
+
+                          {isSending && (
+                            <div className="flex justify-start">
+                              <div className="max-w-[78%] rounded-[16px] border border-slate-200 bg-white px-3 py-2 text-slate-700">
+                                <p className="mb-1 text-[10px] font-semibold text-[#6C80DD]">
+                                  CLAIR AI
+                                </p>
+                                <p className="text-[11px] leading-5 sm:text-[12px]">
+                                  답변을 작성 중이에요...
+                                </p>
+                                <p className="mt-1 text-[10px] text-slate-400">
+                                  잠시만 기다려주세요
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {answerStatus === 'done' && (
+                            <div className="text-center text-[10px] text-slate-400">
+                              답변 완료
+                            </div>
+                          )}
+
+                          {selectedSession.messages.length === 0 && !isSending && (
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-[12px] text-slate-400">
+                              아직 대화 내역이 없어요.
+                            </div>
+                          )}
+
+                          <div ref={messagesEndRef} />
                         </div>
                       </div>
 
@@ -588,7 +815,7 @@ export default function ChatSessionScreen() {
                           </span>
                         </div>
 
-                        <div className="mt-3 flex items-end gap-2">
+                        <div className="mt-3 flex flex-col gap-2">
                           <textarea
                             value={messageInput}
                             onChange={(e) => setMessageInput(e.target.value)}
@@ -598,16 +825,32 @@ export default function ChatSessionScreen() {
                                 handleSendMessage();
                               }
                             }}
-                            placeholder="이 세션에 메시지를 입력해보세요."
-                            className="min-h-[72px] flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[12px] outline-none transition focus:border-[#D8E0F5]"
+                            placeholder={
+                              isSending
+                                ? 'AI가 답변을 작성 중이에요.'
+                                : '이 세션에 메시지를 입력해보세요.'
+                            }
+                            disabled={isSending}
+                            className="min-h-[72px] w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[12px] outline-none transition focus:border-[#D8E0F5] disabled:cursor-not-allowed disabled:bg-slate-50"
                           />
 
                           <button
                             type="button"
                             onClick={handleSendMessage}
-                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#6C80DD] text-white transition hover:opacity-90"
+                            disabled={isSending || !messageInput.trim()}
+                            style={{
+                              backgroundColor:
+                                isSending || !messageInput.trim()
+                                  ? '#D8E0F5'
+                                  : '#6C80DD',
+                              color: '#FFFFFF',
+                            }}
+                            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-4 text-[12px] font-semibold shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed"
                           >
-                            <Send className="h-4 w-4" />
+                            <Send className="h-4 w-4 text-white" />
+                            <span className="text-white">
+                              {isSending ? '답변 작성 중' : '전송'}
+                            </span>
                           </button>
                         </div>
                       </div>
