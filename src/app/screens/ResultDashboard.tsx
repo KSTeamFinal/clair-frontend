@@ -101,11 +101,12 @@ function formatDate(value: unknown) {
 
 function getKeyInfoValue(keyInfo: any, keys: string[], fallback = '-') {
   for (const key of keys) {
-    if (keyInfo?.[key] !== undefined && keyInfo?.[key] !== null && keyInfo?.[key] !== '') {
-      return String(keyInfo[key]);
-    }
+    const raw = keyInfo?.[key];
+    if (raw === undefined || raw === null || raw === '') continue;
+    // {value, reason} 중첩 구조 처리 (AI 응답 형식)
+    const val = typeof raw === 'object' && 'value' in raw ? raw.value : raw;
+    if (val !== undefined && val !== null && val !== '') return String(val);
   }
-
   return fallback;
 }
 
@@ -148,28 +149,22 @@ function normalizeAnalysis(data: any): AnalysisResult {
     safetyScore: Number(data?.analysis?.safety_score ?? calculatedScore) || 0,
     contractPeriod: getKeyInfoValue(
       keyInfo,
-      ['contract_period', 'contractPeriod', 'period', 'duration', '근로계약기간', '계약기간'],
+      ['start_date', 'end_date', 'contract_period', 'contractPeriod', 'period', 'duration', '근로계약기간', '계약기간'],
       '-',
     ),
     contractPeriodDetail: getKeyInfoValue(
       keyInfo,
-      [
-        'contract_period_detail',
-        'contractPeriodDetail',
-        'period_detail',
-        'periodDetail',
-        '계약기간상세',
-      ],
+      ['end_date', 'contract_period_detail', 'contractPeriodDetail', 'period_detail', '계약기간상세'],
       '계약서 기준',
     ),
     salary: getKeyInfoValue(
       keyInfo,
-      ['salary', 'monthly_salary', 'monthlySalary', 'wage', 'pay', '급여', '월급', '임금'],
+      ['amount_text', 'amount_value', 'salary', 'monthly_salary', 'monthlySalary', 'wage', 'pay', '급여', '월급', '임금'],
       '-',
     ),
     salaryDetail: getKeyInfoValue(
       keyInfo,
-      ['salary_detail', 'salaryDetail', 'wage_detail', 'wageDetail', '급여상세', '임금상세'],
+      ['amount_value', 'salary_detail', 'salaryDetail', 'wage_detail', '급여상세'],
       '계약서 기준',
     ),
     summaryText:
