@@ -208,7 +208,7 @@ export function Loading() {
 
       client
         .post(
-          `/api/v1/contracts/${contractId}/request-analysis`,
+          `/api/v1/contracts/${contractId}/analyze`,
           {},
           {
             timeout: 300000,
