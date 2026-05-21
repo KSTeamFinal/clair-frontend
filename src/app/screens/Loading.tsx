@@ -193,7 +193,7 @@ export function Loading() {
       }, 3000);
     };
 
-    const startAnalysis = () => {
+    const startLoading = () => {
       if (!contractId) {
         setErrorMessage('계약서 ID를 찾을 수 없어요.');
         setShowFailModal(true);
@@ -201,49 +201,12 @@ export function Loading() {
       }
 
       setProgress(20);
-
       startFakeProgress();
       startStepTimers();
       startPolling();
-
-      client
-        .post(
-          `/api/v1/contracts/${contractId}/analyze`,
-          {},
-          {
-            timeout: 300000,
-          },
-        )
-        .catch((err: any) => {
-          if (err?.response?.status === 409) {
-            console.log('이미 분석 중입니다.');
-            return;
-          }
-
-          const status = err?.response?.status;
-
-          if (status === 401 || status === 403) {
-            addBotMessage('인증 상태를 다시 확인하고 있어요. 분석은 계속 진행 중입니다.');
-            return;
-          }
-
-          stopPolling();
-
-          if (err?.code === 'ECONNABORTED') {
-            setErrorMessage('분석 요청 시간이 초과되었어요. 잠시 후 다시 시도해주세요.');
-          } else {
-            setErrorMessage(
-              err?.response?.data?.detail ??
-                '분석 요청 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.',
-            );
-          }
-
-          addBotMessage('분석 요청 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.');
-          setShowFailModal(true);
-        });
     };
 
-    startAnalysis();
+    startLoading();
 
     return () => {
       stopPolling();

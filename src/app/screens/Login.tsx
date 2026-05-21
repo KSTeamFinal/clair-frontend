@@ -15,12 +15,14 @@ export function Login() {
   const [isLoginErrorOpen, setIsLoginErrorOpen] = useState(false);
   const [isFindPasswordOpen, setIsFindPasswordOpen] = useState(false);
   const [findPasswordEmail, setFindPasswordEmail] = useState('');
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetError, setResetError] = useState('');
 
   const handleBack = () => {
     navigate('/');
   };
 
-    // 35번째 줄부터 수정 시작
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       setIsLoginErrorOpen(true);
@@ -30,47 +32,15 @@ export function Login() {
     try {
       setIsLoading(true);
 
-      // 환경 변수 설정 (빨간 줄 방지를 위해 @ts-ignore 추가)
-      // 46번째 줄 근처
-      // @ts-ignore
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const { data } = await client.post('/api/v1/auth/login/json', { email, password });
+      const token = data.accessToken || data.access_token;
 
-      // 49번째 줄 근처
-      // 기존 ngrok 주소 대신 백틱(`)과 ${apiUrl}을 사용했는지 확인!
-      const response = await fetch(`${apiUrl}/api/v1/auth/login/json`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      });
-
-      if (!response.ok) {
+      if (token) {
+        localStorage.setItem('accessToken', token);
+        navigate('/home');
+      } else {
         setIsLoginErrorOpen(true);
-        return;
       }
-
-      // Login.tsx 의 handleLogin 함수 안쪽
-        // Login.tsx 의 handleLogin 함수 내부 수정
-    const data = await response.json();
-    console.log("로그인 서버 응답 전체 데이터:", data); // 👈 여기서 정확한 이름을 눈으로 확인 가능!
-
-    // 둘 중 하나라도 있으면 저장하도록 '||' (OR 연산자) 사용
-    const token = data.accessToken || data.access_token;
-
-    if (token) {
-      localStorage.setItem('accessToken', token);
-      console.log("토큰 저장 성공! ");
-      navigate('/home'); //토큰이 있을 때만 홈으로 이동
-    } else {
-      console.error("토큰을 찾을 수 없습니다.");
-      setIsLoginErrorOpen(true); //토큰이 없으면 로그인 실패 팝업 띄우기
-    }
-
-    navigate('/home');
     } catch (error) {
       console.error(error);
       setIsLoginErrorOpen(true);
@@ -83,12 +53,36 @@ export function Login() {
     navigate('/signup');
   };
 
-  const handleFindPasswordSubmit = () => {
+  const handleFindPasswordSubmit = async () => {
     if (!findPasswordEmail.trim()) return;
 
-    alert('비밀번호 재설정 링크가 이메일로 전송되었습니다.');
-    setFindPasswordEmail('');
+    try {
+      setIsSendingReset(true);
+      setResetError('');
+      setResetMessage('');
+
+      await client.post('/api/v1/auth/password-reset/request', {
+        email: findPasswordEmail.trim(),
+      });
+
+      setResetMessage('비밀번호 재설정 링크가 이메일로 전송되었습니다. 메일함을 확인해주세요.');
+      setFindPasswordEmail('');
+    } catch (error: any) {
+      setResetError(
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        '이메일 전송에 실패했습니다. 가입된 이메일인지 확인해주세요.'
+      );
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
+  const handleCloseFindPassword = () => {
     setIsFindPasswordOpen(false);
+    setFindPasswordEmail('');
+    setResetMessage('');
+    setResetError('');
   };
 
   return (
@@ -316,7 +310,7 @@ export function Login() {
 
               <button
                 type="button"
-                onClick={() => setIsFindPasswordOpen(false)}
+                onClick={handleCloseFindPassword}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 aria-label="닫기"
               >
@@ -333,29 +327,44 @@ export function Login() {
                 placeholder="example@email.com"
                 value={findPasswordEmail}
                 onChange={(e) => setFindPasswordEmail(e.target.value)}
-                className="h-[52px] w-full rounded-[16px] border border-slate-200/80 bg-[#EEF3FF] px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8]"
+                disabled={isSendingReset || !!resetMessage}
+                className="h-[52px] w-full rounded-[16px] border border-slate-200/80 bg-[#EEF3FF] px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
 
-            <button
-              type="button"
-              onClick={handleFindPasswordSubmit}
-              className="mt-6 h-12 w-full rounded-[16px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5"
-              style={{
-                background:
-                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                boxShadow: '0 14px 30px rgba(102,122,242,0.24)',
-              }}
-            >
-              재설정 링크 보내기
-            </button>
+            {resetMessage && (
+              <p className="mt-3 rounded-[14px] bg-[#EEF3FF] px-4 py-3 text-left text-[13px] font-medium leading-5 text-[#667AF2]">
+                {resetMessage}
+              </p>
+            )}
+
+            {resetError && (
+              <p className="mt-3 rounded-[14px] bg-red-50 px-4 py-3 text-left text-[13px] font-medium leading-5 text-red-500">
+                {resetError}
+              </p>
+            )}
+
+            {!resetMessage && (
+              <button
+                type="button"
+                onClick={handleFindPasswordSubmit}
+                disabled={isSendingReset || !findPasswordEmail.trim()}
+                className="mt-6 h-12 w-full rounded-[16px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                style={{
+                  background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                  boxShadow: '0 14px 30px rgba(102,122,242,0.24)',
+                }}
+              >
+                {isSendingReset ? '전송 중...' : '재설정 링크 보내기'}
+              </button>
+            )}
 
             <button
               type="button"
-              onClick={() => setIsFindPasswordOpen(false)}
+              onClick={handleCloseFindPassword}
               className="mt-3 h-11 w-full rounded-[16px] text-[14px] font-semibold text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
             >
-              취소
+              {resetMessage ? '닫기' : '취소'}
             </button>
           </div>
         </div>

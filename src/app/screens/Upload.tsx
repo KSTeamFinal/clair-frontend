@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 type Message = {
+  id: string;
   role: 'bot' | 'user';
   text: string;
 };
@@ -37,10 +38,12 @@ export function Upload() {
 
   const [messages, setMessages] = useState<Message[]>([
     {
+      id: crypto.randomUUID(),
       role: 'bot',
       text: '안녕하세요! CLAIR입니다. 계약서 분석을 도와드릴게요.',
     },
     {
+      id: crypto.randomUUID(),
       role: 'bot',
       text: '분석할 계약서를 업로드해주세요. PDF, 이미지(최대 20장), 또는 텍스트 형태로 업로드할 수 있어요.',
     },
@@ -116,11 +119,8 @@ export function Upload() {
 
     setMessages((prev) => [
       ...prev,
-      { role: 'user', text: `업로드 완료: ${displayFileName}` },
-      {
-        role: 'bot',
-        text: '업로드가 완료되었어요. 이제 AI 분석을 시작해볼까요?',
-      },
+      { id: crypto.randomUUID(), role: 'user', text: `업로드 완료: ${displayFileName}` },
+      { id: crypto.randomUUID(), role: 'bot', text: '업로드가 완료되었어요. 이제 AI 분석을 시작해볼까요?' },
     ]);
   };
 
@@ -140,8 +140,8 @@ export function Upload() {
 
     setMessages((prev) => [
       ...prev,
-      { role: 'user', text: `업로드 완료: ${fileName}` },
-      { role: 'bot', text: '업로드가 완료되었어요. 이제 AI 분석을 시작해볼까요?' },
+      { id: crypto.randomUUID(), role: 'user', text: `업로드 완료: ${fileName}` },
+      { id: crypto.randomUUID(), role: 'bot', text: '업로드가 완료되었어요. 이제 AI 분석을 시작해볼까요?' },
     ]);
   };
 
@@ -157,11 +157,8 @@ export function Upload() {
 
     setMessages((prev) => [
       ...prev,
-      { role: 'user', text: '분석 시작해주세요' },
-      {
-        role: 'bot',
-        text: '좋아요. 지금 바로 분석을 시작할게요. 잠시만 기다려주세요.',
-      },
+      { id: crypto.randomUUID(), role: 'user', text: '분석 시작해주세요' },
+      { id: crypto.randomUUID(), role: 'bot', text: '좋아요. 지금 바로 분석을 시작할게요. 잠시만 기다려주세요.' },
     ]);
 
     try {
@@ -208,7 +205,7 @@ export function Upload() {
     const messageToSend = preset ?? inputMessage;
     if (!messageToSend.trim()) return;
 
-    setMessages((prev) => [...prev, { role: 'user', text: messageToSend }]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', text: messageToSend }]);
 
     setTimeout(() => {
       let botResponse = '네, 궁금한 점을 편하게 물어보세요.';
@@ -219,17 +216,11 @@ export function Upload() {
       } else if (messageToSend.includes('결과') || messageToSend.includes('어떻게')) {
         botResponse = '분석이 끝나면 핵심 요약, 위험 요소, 계약 안정도 등을 한눈에 볼 수 있어요.';
       }
-      setMessages((prev) => [...prev, { role: 'bot', text: botResponse }]);
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'bot', text: botResponse }]);
     }, 500);
 
     setInputMessage('');
   };
-
-  const suggestedQuestions = [
-    '계약서 분석은 얼마나 걸리나요?',
-    '어떤 위험 요소를 찾나요?',
-    '분석 결과는 어떻게 보나요?',
-  ];
 
   return (
     <div
@@ -403,8 +394,8 @@ export function Upload() {
                 {/* 챗 메시지 영역 */}
                 <div className="hidden min-h-[380px] flex-col bg-white/30 lg:flex">
                   <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
-                    {messages.map((message, index) => (
-                      <div key={index} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {messages.map((message) => (
+                      <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         {message.role === 'bot' && (
                           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[14px] text-white" style={{ background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)' }}>
                             <Bot size={16} />
