@@ -273,7 +273,11 @@ export default function ProfileScreen() {
                   <button
                     type="button"
                     onClick={handleSave}
-                    className="flex-1 rounded-xl bg-gradient-to-r from-[#7C8CF5] to-[#8EA2FF] py-2.5 text-[13px] font-semibold text-white shadow-sm transition hover:opacity-90"
+                    style={{
+                      backgroundColor: '#EEF2FF',
+                      color: '#4C63D2',
+                    }}
+                    className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold shadow-sm transition"
                   >
                     저장
                   </button>

@@ -27,6 +27,8 @@ const profileItems: SettingItem[] = [
   { id: 1, label: '내 정보 조회', icon: User, path: '/profile' },
   { id: 2, label: '닉네임 변경', icon: User, path: '/profile' },
   { id: 3, label: '비밀번호 변경', icon: User, path: '/profile' },
+  { id: 4, label: '계정 정보', icon: User, path: '/profile' },
+  { id: 5, label: '보안 관리', icon: User, path: '/profile' },
 ];
 
 const chatSessionItems: SettingItem[] = [
