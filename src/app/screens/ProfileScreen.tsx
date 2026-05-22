@@ -49,6 +49,18 @@ export default function ProfileScreen() {
         setProfileImage(res.data.profile_image || res.data.profileImage || null);
       } catch (error) {
         console.error('유저 정보 불러오기 실패:', error);
+        const stored = localStorage.getItem('userInfo');
+        if (stored) {
+          const u = JSON.parse(stored);
+          setUser({
+            name: u.nickname || u.name || '사용자',
+            email: u.email || '',
+            password: '',
+            createdAt: u.created_at || u.createdAt || '',
+          });
+        }
+        const savedImage = localStorage.getItem('profileImage');
+        if (savedImage) setProfileImage(savedImage);
       }
     };
 
@@ -57,25 +69,36 @@ export default function ProfileScreen() {
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-
     if (!file) return;
 
-    const imageUrl = URL.createObjectURL(file);
-    setProfileImage(imageUrl);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setProfileImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleResetImage = () => {
     setProfileImage(null);
-
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
   const handleSave = () => {
+    const stored = localStorage.getItem('userInfo');
+    const userInfo = stored ? JSON.parse(stored) : {};
+    userInfo.nickname = user.name;
+    localStorage.setItem('userInfo', JSON.stringify(userInfo));
+
+    if (profileImage) {
+      localStorage.setItem('profileImage', profileImage);
+    } else {
+      localStorage.removeItem('profileImage');
+    }
+
     setIsEdit(false);
     setShowSaveToast(true);
-
     setTimeout(() => {
       setShowSaveToast(false);
     }, 1800);

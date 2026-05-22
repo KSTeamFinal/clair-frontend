@@ -151,8 +151,12 @@ export default function SettingsScreen() {
     email: '',
     role: '설정 및 관리',
   });
+  const [profileImage, setProfileImage] = useState<string | null>(null);
 
   useEffect(() => {
+    const savedImage = localStorage.getItem('profileImage');
+    if (savedImage) setProfileImage(savedImage);
+
     const fetchUserInfo = async () => {
       try {
         const res = await client.get('/api/v1/auth/me');
@@ -164,6 +168,15 @@ export default function SettingsScreen() {
         });
       } catch (error) {
         console.error('유저 정보 불러오기 실패:', error);
+        const stored = localStorage.getItem('userInfo');
+        if (stored) {
+          const u = JSON.parse(stored);
+          setProfileSummary({
+            name: u.nickname || u.name || '사용자',
+            email: u.email || '',
+            role: '설정 및 관리',
+          });
+        }
       }
     };
 
@@ -223,10 +236,14 @@ export default function SettingsScreen() {
                     onClick={() => navigate('/profile')}
                     className="flex w-full items-center gap-4 text-left sm:gap-[18px]"
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#667AF2] to-[#8097F8] text-white shadow-sm sm:h-11 sm:w-11">
-                      <span className="text-sm font-semibold sm:text-base">
-                        {profileSummary.name?.charAt(0)}
-                      </span>
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[#667AF2] to-[#8097F8] text-white shadow-sm sm:h-11 sm:w-11">
+                      {profileImage ? (
+                        <img src={profileImage} alt="프로필" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-sm font-semibold sm:text-base">
+                          {profileSummary.name?.charAt(0)}
+                        </span>
+                      )}
                     </div>
 
                     <div className="min-w-0 flex-1">
