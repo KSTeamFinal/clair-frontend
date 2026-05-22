@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import client from '../../api/client';
 import {
@@ -16,7 +16,13 @@ import {
   X,
 } from 'lucide-react';
 
-type ContractStatus = '업로드 완료' | '분석 대기' | '분석 완료' | '삭제됨';
+type ContractStatus =
+  | '업로드 완료'
+  | '분석 대기'
+  | '분석 중'
+  | '분석 완료'
+  | '분석 실패'
+  | '삭제됨';
 
 type Contract = {
   id: number;
@@ -31,53 +37,27 @@ type Contract = {
   deletedAt?: string;
 };
 
-const initialContracts: Contract[] = [
-  {
-    id: 1,
-    title: '근로계약서_정규직',
-    category: '근로계약',
-    uploadedAt: '2026.04.05',
-    updatedAt: '방금 전',
-    status: '분석 완료',
-    fileName: 'employment_contract.pdf',
-    size: '1.8MB',
-    summary: '수습기간, 연장근로수당, 퇴사 통보 조항에 대한 검토가 필요한 계약서예요.',
-  },
-  {
-    id: 2,
-    title: '상가임대차계약서',
-    category: '임대차계약',
-    uploadedAt: '2026.04.04',
-    updatedAt: '2시간 전',
-    status: '분석 대기',
-    fileName: 'lease_store.pdf',
-    size: '2.3MB',
-    summary: '원상복구 조항, 관리비 부담, 중도해지 조건을 중심으로 확인 중이에요.',
-  },
-  {
-    id: 3,
-    title: '프리랜서_용역계약서',
-    category: '용역계약',
-    uploadedAt: '2026.04.03',
-    updatedAt: '어제',
-    status: '업로드 완료',
-    fileName: 'freelance_service_contract.pdf',
-    size: '1.2MB',
-    summary: '저작권 귀속, 수정 요청 범위, 대금 지급 시점이 중요한 계약서예요.',
-  },
-  {
-    id: 4,
-    title: '삭제된_비밀유지계약서',
-    category: 'NDA',
-    uploadedAt: '2026.04.01',
-    updatedAt: '2026.04.02',
-    status: '삭제됨',
-    fileName: 'nda_deleted.pdf',
-    size: '980KB',
-    summary: '삭제 이력 확인용 샘플 계약서예요.',
-    deletedAt: '2026.04.04',
-  },
-];
+type RawContract = {
+  id?: number;
+  contract_id?: number;
+  title?: string;
+  name?: string;
+  file_name?: string;
+  filename?: string;
+  original_filename?: string;
+  category?: string;
+  contract_type?: string;
+  uploaded_at?: string;
+  created_at?: string;
+  updated_at?: string;
+  status?: string;
+  analysis_status?: string;
+  file_size?: number;
+  size?: number | string;
+  summary?: string;
+  analysis_summary?: string;
+  deleted_at?: string;
+};
 
 function SectionCard({
   title,
@@ -141,8 +121,10 @@ function ContractListItem({
   const statusStyle =
     contract.status === '분석 완료'
       ? 'bg-emerald-50 text-emerald-600'
-      : contract.status === '분석 대기'
+      : contract.status === '분석 대기' || contract.status === '분석 중'
       ? 'bg-amber-50 text-amber-600'
+      : contract.status === '분석 실패'
+      ? 'bg-rose-50 text-rose-500'
       : contract.status === '삭제됨'
       ? 'bg-rose-50 text-rose-500'
       : 'bg-[#EEF2F9] text-[#6C80DD]';
@@ -212,17 +194,24 @@ function ContractListItem({
 export default function ContractManagementScreen() {
   const navigate = useNavigate();
 
-  const [contracts, setContracts] = useState<Contract[]>(initialContracts);
-  const [selectedContractId, setSelectedContractId] = useState<number>(1);
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [deletedContracts, setDeletedContracts] = useState<Contract[]>([]);
+  const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [showAllContracts, setShowAllContracts] = useState(false);
+
   const [uploadOpen, setUploadOpen] = useState(true);
   const [listOpen, setListOpen] = useState(true);
   const [detailOpen, setDetailOpen] = useState(true);
   const [deleteHistoryOpen, setDeleteHistoryOpen] = useState(false);
-  const [analysisOpen, setAnalysisOpen] = useState(false);
-  const [selectedFileName, setSelectedFileName] = useState('');
-  const [selectedFileSize, setSelectedFileSize] = useState('');
-  const [analysisNote, setAnalysisNote] = useState('');
+  const [analysisOpen, setAnalysisOpen] = useState(true);
+
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
@@ -230,79 +219,294 @@ export default function ContractManagementScreen() {
   const [showUploadErrorModal, setShowUploadErrorModal] = useState(false);
   const [uploadErrorMessage, setUploadErrorMessage] = useState('');
 
+  const formatDate = (value?: string) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+
+    return date.toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+  };
+
+  const formatFileSize = (size?: number | string) => {
+    if (!size) return '-';
+    if (typeof size === 'string') return size;
+
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(1)}MB`;
+    }
+
+    return `${Math.max(1, Math.round(size / 1024))}KB`;
+  };
+
+  const isImageFile = (file: File) => {
+    const name = file.name.toLowerCase();
+
+    return (
+      file.type.startsWith('image/') ||
+      name.endsWith('.png') ||
+      name.endsWith('.jpg') ||
+      name.endsWith('.jpeg') ||
+      name.endsWith('.webp')
+    );
+  };
+
+  const isAllowedUploadFile = (file: File) => {
+    const name = file.name.toLowerCase();
+
+    return (
+      file.type === 'application/pdf' ||
+      file.type === 'text/plain' ||
+      file.type.startsWith('image/') ||
+      name.endsWith('.pdf') ||
+      name.endsWith('.txt') ||
+      name.endsWith('.png') ||
+      name.endsWith('.jpg') ||
+      name.endsWith('.jpeg') ||
+      name.endsWith('.webp')
+    );
+  };
+
+  const normalizeStatus = (status?: string): ContractStatus => {
+    const value = String(status ?? '').toLowerCase();
+
+    if (
+      value.includes('complete') ||
+      value.includes('done') ||
+      value.includes('analyzed') ||
+      value.includes('분석 완료')
+    ) {
+      return '분석 완료';
+    }
+
+    if (
+      value.includes('processing') ||
+      value.includes('running') ||
+      value.includes('progress') ||
+      value.includes('분석 중')
+    ) {
+      return '분석 중';
+    }
+
+    if (
+      value.includes('pending') ||
+      value.includes('waiting') ||
+      value.includes('requested') ||
+      value.includes('대기')
+    ) {
+      return '분석 대기';
+    }
+
+    if (value.includes('fail') || value.includes('error') || value.includes('실패')) {
+      return '분석 실패';
+    }
+
+    if (value.includes('delete') || value.includes('삭제')) {
+      return '삭제됨';
+    }
+
+    return '업로드 완료';
+  };
+
+  const normalizeContract = (raw: RawContract): Contract => {
+    const id = raw.id ?? raw.contract_id ?? 0;
+    const fileName =
+      raw.file_name ??
+      raw.filename ??
+      raw.original_filename ??
+      raw.name ??
+      `contract_${id}.pdf`;
+
+    return {
+      id,
+      title: raw.title ?? raw.name ?? fileName.replace(/\.[^/.]+$/, ''),
+      category: raw.category ?? raw.contract_type ?? '기타계약',
+      uploadedAt: formatDate(raw.uploaded_at ?? raw.created_at),
+      updatedAt: raw.updated_at ? formatDate(raw.updated_at) : '-',
+      status: normalizeStatus(raw.analysis_status ?? raw.status),
+      fileName,
+      size: formatFileSize(raw.file_size ?? raw.size),
+      summary: raw.summary ?? raw.analysis_summary ?? '아직 등록된 요약 정보가 없어요.',
+      deletedAt: raw.deleted_at ? formatDate(raw.deleted_at) : undefined,
+    };
+  };
+
+  const extractContractArray = (data: any): RawContract[] => {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.contracts)) return data.contracts;
+    if (Array.isArray(data?.items)) return data.items;
+    if (Array.isArray(data?.data)) return data.data;
+    return [];
+  };
+
+  const fetchContracts = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      const response = await client.get('/api/v1/contracts/');
+      const list = extractContractArray(response.data).map(normalizeContract);
+
+      const activeList = list.filter((contract) => contract.status !== '삭제됨');
+      const deletedList = list.filter((contract) => contract.status === '삭제됨');
+
+      setContracts(activeList);
+      setDeletedContracts(deletedList);
+
+      setSelectedContractId((prev) => {
+        if (prev && activeList.some((contract) => contract.id === prev)) return prev;
+        return activeList[0]?.id ?? null;
+      });
+    } catch {
+      setUploadErrorMessage('계약서 목록을 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
+      setShowUploadErrorModal(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchContractDetail = useCallback(async (contractId: number) => {
+    try {
+      const response = await client.get(`/api/v1/contracts/${contractId}`);
+      const detail = normalizeContract(response.data);
+
+      setContracts((prev) =>
+        prev.map((contract) =>
+          contract.id === contractId ? { ...contract, ...detail } : contract
+        )
+      );
+    } catch {
+      setUploadErrorMessage('계약서 상세 정보를 불러오지 못했어요.');
+      setShowUploadErrorModal(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchContracts();
+  }, [fetchContracts]);
+
+  useEffect(() => {
+    if (selectedContractId) {
+      fetchContractDetail(selectedContractId);
+    }
+  }, [selectedContractId, fetchContractDetail]);
+
   const visibleContracts = useMemo(() => {
     return contracts.filter(
       (contract) =>
-        contract.status !== '삭제됨' &&
-        (contract.title.toLowerCase().includes(search.toLowerCase()) ||
-          contract.category.toLowerCase().includes(search.toLowerCase()) ||
-          contract.fileName.toLowerCase().includes(search.toLowerCase()))
+        contract.title.toLowerCase().includes(search.toLowerCase()) ||
+        contract.category.toLowerCase().includes(search.toLowerCase()) ||
+        contract.fileName.toLowerCase().includes(search.toLowerCase())
     );
   }, [contracts, search]);
 
-  const deletedContracts = useMemo(() => {
-    return contracts.filter((contract) => contract.status === '삭제됨');
-  }, [contracts]);
+  const displayedContracts = useMemo(() => {
+    return showAllContracts ? visibleContracts : visibleContracts.slice(0, 5);
+  }, [visibleContracts, showAllContracts]);
+
+  useEffect(() => {
+    setShowAllContracts(false);
+  }, [search]);
 
   const selectedContract =
     contracts.find((contract) => contract.id === selectedContractId) ??
     visibleContracts[0] ??
     null;
 
-  const formatFileSize = (size: number) => {
-    if (size >= 1024 * 1024) {
-      return `${(size / (1024 * 1024)).toFixed(1)}MB`;
-    }
-    return `${Math.max(1, Math.round(size / 1024))}KB`;
-  };
-
   const handleSelectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
 
     const maxSize = 10 * 1024 * 1024;
-    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
-    if (!isPdf) {
-      setUploadErrorMessage('PDF 파일만 업로드할 수 있어요.');
+    const validFiles = files.filter((file) => {
+      return isAllowedUploadFile(file) && file.size <= maxSize;
+    });
+
+    if (validFiles.length !== files.length) {
+      setUploadErrorMessage(
+        'PDF, TXT, 이미지 파일만 업로드할 수 있고, 각 파일은 10MB 이하만 가능해요.'
+      );
       setShowUploadErrorModal(true);
-      e.target.value = '';
-      return;
     }
 
-    if (file.size > maxSize) {
-      setUploadErrorMessage('파일 크기는 10MB 이하만 업로드할 수 있어요.');
-      setShowUploadErrorModal(true);
-      e.target.value = '';
-      return;
-    }
+    setSelectedFiles((prev) => {
+      const merged = [...prev];
 
-    setSelectedFileName(file.name);
-    setSelectedFileSize(formatFileSize(file.size));
+      validFiles.forEach((file) => {
+        const alreadyExists = merged.some(
+          (item) =>
+            item.name === file.name &&
+            item.size === file.size &&
+            item.lastModified === file.lastModified
+        );
+
+        if (!alreadyExists) {
+          merged.push(file);
+        }
+      });
+
+      return merged;
+    });
+
+    e.target.value = '';
   };
 
-  const handleUpload = () => {
-    if (!selectedFileName) return;
+  const handleRemoveSelectedFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index));
+  };
 
-    const newContract: Contract = {
-      id: Date.now(),
-      title: selectedFileName.replace(/\.[^/.]+$/, ''),
-      category: '기타계약',
-      uploadedAt: '오늘',
-      updatedAt: '방금 전',
-      status: '업로드 완료',
-      fileName: selectedFileName,
-      size: selectedFileSize || '업로드 파일',
-      summary: '새로 업로드된 계약서예요. 상세 내용을 확인하거나 분석 요청을 진행할 수 있어요.',
-    };
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) return;
 
-    setContracts((prev) => [newContract, ...prev]);
-    setSelectedContractId(newContract.id);
-    setSelectedFileName('');
-    setSelectedFileSize('');
-    setUploadOpen(true);
-    setListOpen(true);
-    setDetailOpen(true);
+    try {
+      setUploading(true);
+
+      const imageFiles = selectedFiles.filter(isImageFile);
+      const documentFiles = selectedFiles.filter((file) => !isImageFile(file));
+
+      for (const file of documentFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        await client.post('/api/v1/contracts/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+      }
+
+      if (imageFiles.length > 0) {
+        const imageFormData = new FormData();
+
+        imageFiles.forEach((file) => {
+          imageFormData.append('files', file);
+        });
+
+        await client.post('/api/v1/contracts/upload-images', imageFormData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+      }
+
+      await fetchContracts();
+
+      setSelectedFiles([]);
+      setUploadOpen(true);
+      setListOpen(true);
+      setDetailOpen(true);
+      setShowAllContracts(false);
+    } catch {
+      setUploadErrorMessage(
+        '파일 업로드에 실패했어요. 파일 형식, 용량 또는 백엔드 업로드 필드명을 확인해주세요.'
+      );
+      setShowUploadErrorModal(true);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleOpenDeleteModal = (contractId: number) => {
@@ -315,51 +519,58 @@ export default function ContractManagementScreen() {
     setShowDeleteModal(false);
   };
 
-  const handleConfirmDeleteContract = () => {
+  const handleConfirmDeleteContract = async () => {
     if (deleteTargetId === null) return;
 
-    const updatedContracts = contracts.map((contract) =>
-      contract.id === deleteTargetId
-        ? {
-            ...contract,
-            status: '삭제됨' as ContractStatus,
+    const target = contracts.find((contract) => contract.id === deleteTargetId);
+
+    try {
+      setDeleting(true);
+
+      await client.delete(`/api/v1/contracts/${deleteTargetId}`);
+
+      if (target) {
+        setDeletedContracts((prev) => [
+          {
+            ...target,
+            status: '삭제됨',
             updatedAt: '방금 전',
             deletedAt: '오늘',
-          }
-        : contract
-    );
+          },
+          ...prev,
+        ]);
+      }
 
-    setContracts(updatedContracts);
+      const remaining = contracts.filter((contract) => contract.id !== deleteTargetId);
 
-    const remaining = updatedContracts.filter(
-      (contract) => contract.id !== deleteTargetId && contract.status !== '삭제됨'
-    );
-
-    setSelectedContractId(remaining[0]?.id ?? 0);
-    setDeleteTargetId(null);
-    setShowDeleteModal(false);
+      setContracts(remaining);
+      setSelectedContractId(remaining[0]?.id ?? null);
+      setShowDeleteModal(false);
+      setDeleteTargetId(null);
+      setShowAllContracts(false);
+    } catch {
+      setUploadErrorMessage('계약서 삭제에 실패했어요. 잠시 후 다시 시도해주세요.');
+      setShowUploadErrorModal(true);
+    } finally {
+      setDeleting(false);
+    }
   };
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!selectedContract || selectedContract.status === '삭제됨') return;
 
-    setContracts((prev) =>
-      prev.map((contract) =>
-        contract.id === selectedContract.id
-          ? {
-              ...contract,
-              status: '분석 완료',
-              updatedAt: '방금 전',
-              summary:
-                analysisNote.trim() ||
-                '독소조항, 책임 범위, 해지 조항, 대금 지급 조건을 중심으로 분석 요청이 완료되었어요.',
-            }
-          : contract
-      )
-    );
+    try {
+      setAnalyzing(true);
 
-    setAnalysisNote('');
-    setAnalysisOpen(true);
+      await client.post(`/api/v1/contracts/${selectedContract.id}/request-analysis`);
+
+      navigate(`/loading/${selectedContract.id}`);
+    } catch {
+      setUploadErrorMessage('분석 요청에 실패했어요. 이미 분석 중인 계약서일 수 있어요.');
+      setShowUploadErrorModal(true);
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   return (
@@ -414,7 +625,7 @@ export default function ContractManagementScreen() {
             <div className="mt-3.5 grid gap-3.5 sm:mt-4 sm:gap-4">
               <SectionCard
                 title="계약서 업로드"
-                subtitle="PDF 파일 업로드"
+                subtitle="PDF, TXT, 이미지 파일 업로드"
                 open={uploadOpen}
                 onToggle={() => setUploadOpen((prev) => !prev)}
               >
@@ -430,7 +641,7 @@ export default function ContractManagementScreen() {
                           새 계약서 업로드
                         </p>
                         <p className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-[12px]">
-                          업로드 후 목록 조회, 상세 확인, 삭제, 분석 요청까지 바로 이어서 진행할 수 있어요.
+                          PDF, TXT, 이미지 파일을 여러 개 선택해서 업로드할 수 있어요.
                         </p>
                       </div>
                     </div>
@@ -440,7 +651,8 @@ export default function ContractManagementScreen() {
                       파일 선택
                       <input
                         type="file"
-                        accept=".pdf"
+                        multiple
+                        accept=".pdf,.txt,.png,.jpg,.jpeg,.webp,image/*,text/plain,application/pdf"
                         className="hidden"
                         onChange={handleSelectFile}
                       />
@@ -449,17 +661,46 @@ export default function ContractManagementScreen() {
 
                   <div className="mt-3 rounded-xl bg-white p-3">
                     <p className="text-[10px] text-slate-400">선택된 파일</p>
-                    <p className="mt-1 break-all text-[12px] font-medium text-slate-700">
-                      {selectedFileName || '아직 선택된 파일이 없어요.'}
-                    </p>
+
+                    <div className="mt-2 space-y-1.5">
+                      {selectedFiles.length > 0 ? (
+                        selectedFiles.map((file, index) => (
+                          <div
+                            key={`${file.name}-${file.size}-${file.lastModified}`}
+                            className="flex items-center justify-between gap-2 rounded-lg bg-[#F8FAFF] px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="break-all text-[12px] font-medium text-slate-700">
+                                {file.name}
+                              </p>
+                              <p className="mt-0.5 text-[10px] text-slate-400">
+                                {formatFileSize(file.size)}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSelectedFile(index)}
+                              className="shrink-0 text-[11px] font-medium text-slate-400 transition hover:text-rose-500"
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-[12px] font-medium text-slate-700">
+                          아직 선택된 파일이 없어요.
+                        </p>
+                      )}
+                    </div>
 
                     <button
                       type="button"
                       onClick={handleUpload}
-                      disabled={!selectedFileName}
+                      disabled={selectedFiles.length === 0 || uploading}
                       className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#6C80DD] px-4 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                     >
-                      업로드 실행
+                      {uploading ? '업로드 중...' : '업로드 실행'}
                     </button>
                   </div>
                 </div>
@@ -468,7 +709,13 @@ export default function ContractManagementScreen() {
               <div className="mx-auto grid w-full max-w-[920px] gap-3 lg:grid-cols-[0.92fr_1.08fr] lg:gap-4">
                 <SectionCard
                   title="계약서 목록 조회"
-                  subtitle={`${visibleContracts.length}개 계약서`}
+                  subtitle={
+                    loading
+                      ? '불러오는 중'
+                      : showAllContracts
+                      ? `${visibleContracts.length}개 전체 표시`
+                      : `${visibleContracts.length}개 중 ${Math.min(visibleContracts.length, 5)}개 표시`
+                  }
                   open={listOpen}
                   onToggle={() => setListOpen((prev) => !prev)}
                 >
@@ -483,20 +730,39 @@ export default function ContractManagementScreen() {
                   </div>
 
                   <div className="mt-3 space-y-2.5">
-                    {visibleContracts.map((contract) => (
-                      <ContractListItem
-                        key={contract.id}
-                        contract={contract}
-                        isActive={selectedContractId === contract.id}
-                        onClick={() => setSelectedContractId(contract.id)}
-                        onDelete={() => handleOpenDeleteModal(contract.id)}
-                      />
-                    ))}
+                    {loading && (
+                      <div className="rounded-[16px] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-[12px] text-slate-400 sm:text-[13px]">
+                        계약서 목록을 불러오는 중이에요.
+                      </div>
+                    )}
 
-                    {visibleContracts.length === 0 && (
+                    {!loading &&
+                      displayedContracts.map((contract) => (
+                        <ContractListItem
+                          key={contract.id}
+                          contract={contract}
+                          isActive={selectedContractId === contract.id}
+                          onClick={() => setSelectedContractId(contract.id)}
+                          onDelete={() => handleOpenDeleteModal(contract.id)}
+                        />
+                      ))}
+
+                    {!loading && visibleContracts.length === 0 && (
                       <div className="rounded-[16px] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-[12px] text-slate-400 sm:text-[13px]">
                         조회되는 계약서가 없어요.
                       </div>
+                    )}
+
+                    {!loading && visibleContracts.length > 5 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllContracts((prev) => !prev)}
+                        className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#EEF2F9] px-4 text-[12px] font-semibold text-[#5F75B1] transition hover:opacity-90"
+                      >
+                        {showAllContracts
+                          ? '접기'
+                          : `더 보기 (${visibleContracts.length - 5}개 더)`}
+                      </button>
                     )}
                   </div>
                 </SectionCard>
@@ -569,27 +835,41 @@ export default function ContractManagementScreen() {
                         </p>
                       </div>
 
-                      {selectedContract.status !== '삭제됨' && (
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-                          <button
-                            type="button"
-                            onClick={handleAnalyze}
-                            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#6C80DD] px-4 text-[12px] font-semibold text-white transition hover:opacity-90 sm:w-auto"
-                          >
-                            <BarChart3 className="h-4 w-4" />
-                            분석 요청
-                          </button>
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                        <button
+                          type="button"
+                          onClick={handleAnalyze}
+                          disabled={analyzing}
+                          style={{
+                            height: '40px',
+                            padding: '0 16px',
+                            borderRadius: '12px',
+                            backgroundColor: analyzing ? '#AAB6E8' : '#6C80DD',
+                            color: '#FFFFFF',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            border: 'none',
+                            cursor: analyzing ? 'not-allowed' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            boxShadow: '0 8px 18px rgba(108, 128, 221, 0.18)',
+                          }}
+                        >
+                          <BarChart3 size={16} />
+                          {analyzing ? '요청 중...' : '분석 요청'}
+                        </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleOpenDeleteModal(selectedContract.id)}
-                            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[12px] font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 sm:w-auto"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            계약서 삭제
-                          </button>
-                        </div>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDeleteModal(selectedContract.id)}
+                          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[12px] font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 sm:w-auto"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          계약서 삭제
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <div className="flex min-h-[220px] items-center justify-center rounded-[16px] border border-dashed border-slate-200 bg-slate-50 text-center text-[12px] text-slate-400 sm:text-[13px]">
@@ -601,37 +881,60 @@ export default function ContractManagementScreen() {
 
               <SectionCard
                 title="계약서 분석 요청"
-                subtitle="선택한 계약서에 분석 요청 보내기"
+                subtitle="선택한 계약서 분석 시작"
                 open={analysisOpen}
                 onToggle={() => setAnalysisOpen((prev) => !prev)}
               >
                 <div className="mx-auto w-full max-w-[900px] rounded-[16px] border border-slate-100 bg-white p-3">
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-[#6C80DD]" />
-                    <p className="text-[12px] font-semibold text-slate-900 sm:text-[13px]">
-                      분석 메모
-                    </p>
-                  </div>
+                  {selectedContract ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4 text-[#6C80DD]" />
+                        <p className="text-[12px] font-semibold text-slate-900 sm:text-[13px]">
+                          선택한 계약서 분석 요청
+                        </p>
+                      </div>
 
-                  <p className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-[12px]">
-                    독소조항, 해지 조항, 책임 범위, 손해배상, 대금 지급 조건 등 확인이 필요한 내용을 적어둘 수 있어요.
-                  </p>
+                      <p className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-[12px]">
+                        아래 계약서에 대해 AI 분석을 시작합니다. 요청 후 로딩 화면에서 진행 상태를 확인할 수 있어요.
+                      </p>
 
-                  <textarea
-                    value={analysisNote}
-                    onChange={(e) => setAnalysisNote(e.target.value)}
-                    placeholder="예: 해지 조항과 위약금 조항이 과도한지 분석해줘."
-                    className="mt-3 min-h-[92px] w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[12px] outline-none transition focus:border-[#D8E0F5]"
-                  />
+                      <div className="mt-3 rounded-xl bg-[#F8FAFF] px-3 py-3">
+                        <p className="text-[10px] text-slate-400">선택한 계약서</p>
+                        <p className="mt-1 break-all text-[13px] font-semibold text-slate-800">
+                          {selectedContract.title}
+                        </p>
+                        <p className="mt-1 break-all text-[11px] text-slate-500">
+                          {selectedContract.fileName}
+                        </p>
+                      </div>
 
-                  <button
-                    type="button"
-                    onClick={handleAnalyze}
-                    disabled={!selectedContract || selectedContract.status === '삭제됨'}
-                    className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#6C80DD] px-4 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-                  >
-                    분석 요청 실행
-                  </button>
+                      <button
+                        type="button"
+                        onClick={handleAnalyze}
+                        disabled={analyzing}
+                        style={{
+                          width: '100%',
+                          height: '44px',
+                          marginTop: '16px',
+                          borderRadius: '12px',
+                          backgroundColor: analyzing ? '#AAB6E8' : '#6C80DD',
+                          color: '#FFFFFF',
+                          fontSize: '13px',
+                          fontWeight: 700,
+                          border: 'none',
+                          cursor: analyzing ? 'not-allowed' : 'pointer',
+                          boxShadow: '0 8px 18px rgba(108, 128, 221, 0.22)',
+                        }}
+                      >
+                        {analyzing ? '분석 요청 중...' : '선택한 계약서 분석 요청'}
+                      </button>
+                    </>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-[12px] text-slate-400">
+                      먼저 계약서를 선택해주세요.
+                    </div>
+                  )}
                 </div>
               </SectionCard>
 
@@ -643,10 +946,7 @@ export default function ContractManagementScreen() {
               >
                 <div className="mx-auto w-full max-w-[900px] space-y-2.5">
                   {deletedContracts.map((contract) => (
-                    <div
-                      key={contract.id}
-                      className="rounded-[14px] border border-slate-100 bg-white p-3"
-                    >
+                    <div key={contract.id} className="rounded-[14px] border border-slate-100 bg-white p-3">
                       <div className="flex items-start gap-3">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50">
                           <Trash2 className="h-4 w-4 text-rose-500" />
@@ -720,13 +1020,14 @@ export default function ContractManagementScreen() {
               <button
                 type="button"
                 onClick={handleConfirmDeleteContract}
+                disabled={deleting}
                 style={{
                   backgroundColor: '#EEF2FF',
                   color: '#4C63D2',
                 }}
-                className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold shadow-sm transition hover:opacity-90"
+                className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                삭제
+                {deleting ? '삭제 중...' : '삭제'}
               </button>
             </div>
           </div>
@@ -738,9 +1039,7 @@ export default function ContractManagementScreen() {
           <div className="w-full max-w-[360px] rounded-2xl bg-white p-5 shadow-lg">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-[16px] font-semibold text-slate-900">
-                  업로드 실패
-                </h2>
+                <h2 className="text-[16px] font-semibold text-slate-900">알림</h2>
                 <p className="mt-2 text-[13px] leading-6 text-slate-500">
                   {uploadErrorMessage}
                 </p>

@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 
-const BASE_URL = (import.meta as any).env.VITE_API_URL || 'http://127.0.0.1:8000';
+const BASE_URL = (import.meta as any).env.VITE_API_URL || '';
 
 const client: AxiosInstance = axios.create({
   baseURL: BASE_URL,

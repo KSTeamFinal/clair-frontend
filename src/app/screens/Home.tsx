@@ -34,12 +34,15 @@ export function Home() {
     try {
       setIsLoading(true);
 
-      // 1. 내 정보 가져오기
-      const userRes = await client.get('/api/v1/auth/me');
-      const userData = userRes.data;
-
-      if (userData) {
-        setNickname(userData.nickname || userData.user?.email || '사용자');
+      // 1. 내 정보 가져오기 (실패해도 계약서 목록 조회는 계속)
+      try {
+        const userRes = await client.get('/api/v1/auth/me');
+        const userData = userRes.data;
+        if (userData) {
+          setNickname(userData.nickname || userData.user?.email || '사용자');
+        }
+      } catch (error) {
+        console.error('사용자 정보 로드 실패:', error);
       }
 
       // 2. 계약서 목록 가져오기
@@ -64,7 +67,7 @@ export function Home() {
 
       setContracts(parsedContracts);
     } catch (error: any) {
-      console.error('데이터 로드 실패:', error);
+      console.error('계약서 목록 로드 실패:', error);
       setContracts([]);
     } finally {
       setIsLoading(false);
@@ -74,7 +77,7 @@ export function Home() {
   useEffect(() => {
     fetchData();
     fetchUnreadCount();
-  }, [fetchData, location.pathname, location.state]);
+  }, [fetchData, location.pathname]);
 
   const normalizeRiskLevel = (value: unknown) => {
     const level = String(value ?? '').toLowerCase();
@@ -138,7 +141,7 @@ export function Home() {
     : contracts.slice(0, 3);
 
   const completedContracts = contracts.filter(
-    (contract) => contract.status === 'completed'
+    (contract) => contract.status === 'COMPLETED'
   );
 
   const averageSafetyScore =
@@ -329,12 +332,12 @@ export function Home() {
                             <div className="mt-3 flex items-center gap-2">
                               <span
                                 className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                                  doc.status === 'completed'
+                                  doc.status === 'COMPLETED'
                                     ? 'bg-emerald-50 text-emerald-600'
                                     : 'bg-blue-50 text-blue-600'
                                 }`}
                               >
-                                {doc.status === 'completed'
+                                {doc.status === 'COMPLETED'
                                   ? '분석 완료'
                                   : '분석 중'}
                               </span>
