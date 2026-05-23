@@ -37,6 +37,9 @@ export function Login() {
 
       if (token) {
         localStorage.setItem('accessToken', token);
+        if (data.user) {
+          localStorage.setItem('userInfo', JSON.stringify(data.user));
+        }
         navigate('/home');
       } else {
         setIsLoginErrorOpen(true);

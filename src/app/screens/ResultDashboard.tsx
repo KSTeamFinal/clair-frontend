@@ -146,7 +146,7 @@ function normalizeAnalysis(data: any): AnalysisResult {
         data?.updated_at ??
         data?.created_at,
     ),
-    safetyScore: Number(data?.analysis?.safety_score ?? calculatedScore) || 0,
+    safetyScore: Number(data?.safety_score ?? data?.analysis?.safety_score ?? calculatedScore) || 0,
     contractPeriod: getKeyInfoValue(
       keyInfo,
       ['start_date', 'end_date', 'contract_period', 'contractPeriod', 'period', 'duration', '근로계약기간', '계약기간'],

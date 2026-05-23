@@ -548,8 +548,14 @@ export default function ContractManagementScreen() {
       setShowDeleteModal(false);
       setDeleteTargetId(null);
       setShowAllContracts(false);
-    } catch {
-      setUploadErrorMessage('계약서 삭제에 실패했어요. 잠시 후 다시 시도해주세요.');
+    } catch (error: any) {
+      console.error('삭제 실패:', error?.response?.status, error?.response?.data);
+      const detail = error?.response?.data?.detail || error?.response?.data?.message;
+      setUploadErrorMessage(
+        detail
+          ? `계약서 삭제에 실패했어요: ${detail}`
+          : '계약서 삭제에 실패했어요. 잠시 후 다시 시도해주세요.'
+      );
       setShowUploadErrorModal(true);
     } finally {
       setDeleting(false);
