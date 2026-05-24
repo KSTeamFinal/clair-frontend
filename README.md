@@ -2,6 +2,20 @@
 
 CLAIR의 React + TypeScript PWA (port 5173). 계약서 업로드, 분석 결과 확인, Q&A 채팅을 제공한다.
 
+## 화면 미리보기
+
+| 랜딩 | 홈 |
+|------|-----|
+| ![랜딩](docs/screenshots/01_landing.png) | ![홈](docs/screenshots/03_home.png) |
+
+| 업로드 | 분석 결과 |
+|--------|----------|
+| ![업로드](docs/screenshots/04_upload.png) | ![분석 결과](docs/screenshots/06_result_full.png) |
+
+| Q&A 채팅 | 계약서 관리 |
+|----------|-----------|
+| ![채팅](docs/screenshots/10_chat_session.png) | ![관리](docs/screenshots/05_contracts_manage.png) |
+
 ## 실행
 
 ```bash
