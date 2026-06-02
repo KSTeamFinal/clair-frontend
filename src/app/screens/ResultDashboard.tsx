@@ -19,9 +19,11 @@ import {
   Copy,
   X,
   Link2,
+  Scale,
+  XCircle,
 } from 'lucide-react';
 
-type MessageType = 'text' | 'score' | 'summary' | 'risks';
+type MessageType = 'text' | 'score' | 'summary' | 'risks' | 'compliance';
 type Role = 'bot' | 'user';
 
 type Message = {
@@ -38,6 +40,15 @@ type RiskItem = {
   level: RiskLevel;
 };
 
+type ComplianceStatus = '위반' | '주의' | '적합' | '검토불가';
+
+type ComplianceItem = {
+  clauseId: string;
+  clauseTitle: string;
+  status: ComplianceStatus;
+  reason: string;
+};
+
 type AnalysisResult = {
   fileName: string;
   analyzedDate: string;
@@ -48,6 +59,7 @@ type AnalysisResult = {
   salaryDetail: string;
   summaryText: string;
   risks: RiskItem[];
+  compliance: ComplianceItem[];
 };
 
 const DEFAULT_ANALYSIS: AnalysisResult = {
@@ -60,6 +72,7 @@ const DEFAULT_ANALYSIS: AnalysisResult = {
   salaryDetail: '-',
   summaryText: '분석 결과를 불러오는 중입니다.',
   risks: [],
+  compliance: [],
 };
 
 function normalizeRiskLevel(value: unknown): RiskLevel {
@@ -116,6 +129,7 @@ function normalizeAnalysis(data: any): AnalysisResult {
   const risks: RiskItem[] = Array.isArray(data?.risk_clauses)
     ? data.risk_clauses.map((risk: any) => ({
         title:
+          risk?.title ??
           risk?.risk_type ??
           risk?.clause_number ??
           risk?.original_text?.slice?.(0, 24) ??
@@ -172,6 +186,16 @@ function normalizeAnalysis(data: any): AnalysisResult {
       data?.summary ??
       '계약서 분석 결과를 확인해보세요.',
     risks,
+    compliance: Array.isArray(data?.compliance_results)
+      ? data.compliance_results.map((c: any) => ({
+          clauseId: c?.clause_id ?? '',
+          clauseTitle: c?.clause_title ?? c?.clause_id ?? '조항',
+          status: (['위반', '주의', '적합', '검토불가'].includes(c?.status)
+            ? c.status
+            : '검토불가') as ComplianceStatus,
+          reason: c?.reason ?? '',
+        }))
+      : [],
   };
 }
 
@@ -282,6 +306,7 @@ export function ResultDashboard() {
           { role: 'bot', text: normalized.summaryText, type: 'text' },
           { role: 'bot', text: '', type: 'summary' },
           { role: 'bot', text: '', type: 'risks' },
+          { role: 'bot', text: '', type: 'compliance' },
           { role: 'bot', text: '', type: 'score' },
           {
             role: 'bot',
@@ -662,6 +687,51 @@ export function ResultDashboard() {
     );
   };
 
+  const ComplianceCards = () => {
+    if (analysis.compliance.length === 0) {
+      return (
+        <div className="rounded-[18px] border border-slate-100 bg-slate-50 p-4">
+          <p className="text-[13px] text-slate-400 text-center">법령 준수 데이터가 없어요.</p>
+        </div>
+      );
+    }
+
+    const statusStyle = (status: ComplianceStatus) => {
+      if (status === '위반') return { bg: 'border-red-100 bg-red-50', icon: <XCircle size={15} />, badge: 'bg-red-500', iconWrap: 'bg-gradient-to-br from-red-500 to-orange-500' };
+      if (status === '주의') return { bg: 'border-amber-100 bg-amber-50', icon: <AlertTriangle size={15} />, badge: 'bg-amber-500', iconWrap: 'bg-gradient-to-br from-yellow-500 to-amber-500' };
+      if (status === '적합') return { bg: 'border-emerald-100 bg-emerald-50', icon: <CheckCircle size={15} />, badge: 'bg-emerald-500', iconWrap: 'bg-gradient-to-br from-green-500 to-emerald-500' };
+      return { bg: 'border-slate-100 bg-slate-50', icon: <Scale size={15} />, badge: 'bg-slate-400', iconWrap: 'bg-gradient-to-br from-slate-400 to-slate-500' };
+    };
+
+    return (
+      <div className="space-y-3">
+        {analysis.compliance.map((item, index) => {
+          const s = statusStyle(item.status);
+          return (
+            <div key={`${item.clauseId}-${index}`} className={`rounded-[18px] border p-4 ${s.bg}`}>
+              <div className="flex items-start gap-3">
+                <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] text-white ${s.iconWrap}`}>
+                  {s.icon}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-[14px] font-semibold text-slate-900">{item.clauseTitle}</h4>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold text-white ${s.badge}`}>
+                      {item.status}
+                    </span>
+                  </div>
+                  {item.reason && (
+                    <p className="mt-2 text-[13px] leading-6 text-slate-600">{item.reason}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const SummaryCards = () => (
     <div className="grid grid-cols-2 gap-4">
       <div className="min-w-0 rounded-[22px] border border-slate-100 bg-white px-5 py-6 shadow-sm">
@@ -868,6 +938,25 @@ export function ResultDashboard() {
                               </div>
 
                               <RiskCards />
+                            </div>
+                          </div>
+                        )}
+
+                        {message.type === 'compliance' && (
+                          <div className="flex gap-3">
+                            <div
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
+                              style={{ background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)' }}
+                            >
+                              <Bot size={16} />
+                            </div>
+                            <div className="max-w-xl flex-1 space-y-3">
+                              <div className="rounded-[20px] border border-white/90 bg-white px-4 py-3 shadow-sm">
+                                <p className="text-[15px] font-medium text-slate-900">
+                                  법령 준수 검사 결과예요.
+                                </p>
+                              </div>
+                              <ComplianceCards />
                             </div>
                           </div>
                         )}
@@ -1184,6 +1273,14 @@ export function ResultDashboard() {
 
                         <div className="mt-4">
                           <RiskCards />
+                        </div>
+
+                        <div className="mt-4 border-t border-slate-100 pt-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Scale size={16} className="text-[#6C80DD]" />
+                            <h3 className="text-[15px] font-semibold text-slate-900">법령 준수 검사</h3>
+                          </div>
+                          <ComplianceCards />
                         </div>
                       </div>
 
