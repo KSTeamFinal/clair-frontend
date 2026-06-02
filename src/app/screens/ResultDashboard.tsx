@@ -116,6 +116,7 @@ function normalizeAnalysis(data: any): AnalysisResult {
   const risks: RiskItem[] = Array.isArray(data?.risk_clauses)
     ? data.risk_clauses.map((risk: any) => ({
         title:
+          risk?.title ??
           risk?.risk_type ??
           risk?.clause_number ??
           risk?.original_text?.slice?.(0, 24) ??
