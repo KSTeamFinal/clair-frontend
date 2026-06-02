@@ -195,7 +195,14 @@ export default function ContractManagementScreen() {
   const navigate = useNavigate();
 
   const [contracts, setContracts] = useState<Contract[]>([]);
-  const [deletedContracts, setDeletedContracts] = useState<Contract[]>([]);
+  const [deletedContracts, setDeletedContracts] = useState<Contract[]>(() => {
+    try {
+      const stored = localStorage.getItem('deletedContracts');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [showAllContracts, setShowAllContracts] = useState(false);
@@ -204,7 +211,6 @@ export default function ContractManagementScreen() {
   const [listOpen, setListOpen] = useState(true);
   const [detailOpen, setDetailOpen] = useState(true);
   const [deleteHistoryOpen, setDeleteHistoryOpen] = useState(false);
-  const [analysisOpen, setAnalysisOpen] = useState(true);
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
@@ -350,10 +356,8 @@ export default function ContractManagementScreen() {
       const list = extractContractArray(response.data).map(normalizeContract);
 
       const activeList = list.filter((contract) => contract.status !== '삭제됨');
-      const deletedList = list.filter((contract) => contract.status === '삭제됨');
 
       setContracts(activeList);
-      setDeletedContracts(deletedList);
 
       setSelectedContractId((prev) => {
         if (prev && activeList.some((contract) => contract.id === prev)) return prev;
@@ -530,15 +534,17 @@ export default function ContractManagementScreen() {
       await client.delete(`/api/v1/contracts/${deleteTargetId}`);
 
       if (target) {
-        setDeletedContracts((prev) => [
-          {
-            ...target,
-            status: '삭제됨',
-            updatedAt: '방금 전',
-            deletedAt: '오늘',
-          },
-          ...prev,
-        ]);
+        const newRecord: Contract = {
+          ...target,
+          status: '삭제됨',
+          updatedAt: '방금 전',
+          deletedAt: new Date().toLocaleDateString('ko-KR'),
+        };
+        setDeletedContracts((prev) => {
+          const updated = [newRecord, ...prev];
+          localStorage.setItem('deletedContracts', JSON.stringify(updated));
+          return updated;
+        });
       }
 
       const remaining = contracts.filter((contract) => contract.id !== deleteTargetId);
@@ -709,6 +715,27 @@ export default function ContractManagementScreen() {
                       {uploading ? '업로드 중...' : '업로드 실행'}
                     </button>
                   </div>
+
+                  <div className="mt-3 border-t border-[#E8EEFF] pt-3">
+                    {selectedContract && (
+                      <p className="mb-2 truncate text-[11px] text-slate-400">
+                        선택된 계약서: <span className="font-medium text-slate-600">{selectedContract.title}</span>
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleAnalyze}
+                      disabled={analyzing || !selectedContract}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[13px] font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+                      style={{
+                        backgroundColor: analyzing ? '#AAB6E8' : '#6C80DD',
+                        boxShadow: selectedContract ? '0 8px 20px rgba(108, 128, 221, 0.28)' : 'none',
+                      }}
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                      {analyzing ? '분석 요청 중...' : 'AI 분석 시작'}
+                    </button>
+                  </div>
                 </div>
               </SectionCard>
 
@@ -841,36 +868,11 @@ export default function ContractManagementScreen() {
                         </p>
                       </div>
 
-                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-                        <button
-                          type="button"
-                          onClick={handleAnalyze}
-                          disabled={analyzing}
-                          style={{
-                            height: '40px',
-                            padding: '0 16px',
-                            borderRadius: '12px',
-                            backgroundColor: analyzing ? '#AAB6E8' : '#6C80DD',
-                            color: '#FFFFFF',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                            border: 'none',
-                            cursor: analyzing ? 'not-allowed' : 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '8px',
-                            boxShadow: '0 8px 18px rgba(108, 128, 221, 0.18)',
-                          }}
-                        >
-                          <BarChart3 size={16} />
-                          {analyzing ? '요청 중...' : '분석 요청'}
-                        </button>
-
+                      <div className="mt-4">
                         <button
                           type="button"
                           onClick={() => handleOpenDeleteModal(selectedContract.id)}
-                          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[12px] font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 sm:w-auto"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-2.5 text-[12px] font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500"
                         >
                           <Trash2 className="h-4 w-4" />
                           계약서 삭제
@@ -884,65 +886,6 @@ export default function ContractManagementScreen() {
                   )}
                 </SectionCard>
               </div>
-
-              <SectionCard
-                title="계약서 분석 요청"
-                subtitle="선택한 계약서 분석 시작"
-                open={analysisOpen}
-                onToggle={() => setAnalysisOpen((prev) => !prev)}
-              >
-                <div className="mx-auto w-full max-w-[900px] rounded-[16px] border border-slate-100 bg-white p-3">
-                  {selectedContract ? (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4 text-[#6C80DD]" />
-                        <p className="text-[12px] font-semibold text-slate-900 sm:text-[13px]">
-                          선택한 계약서 분석 요청
-                        </p>
-                      </div>
-
-                      <p className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-[12px]">
-                        아래 계약서에 대해 AI 분석을 시작합니다. 요청 후 로딩 화면에서 진행 상태를 확인할 수 있어요.
-                      </p>
-
-                      <div className="mt-3 rounded-xl bg-[#F8FAFF] px-3 py-3">
-                        <p className="text-[10px] text-slate-400">선택한 계약서</p>
-                        <p className="mt-1 break-all text-[13px] font-semibold text-slate-800">
-                          {selectedContract.title}
-                        </p>
-                        <p className="mt-1 break-all text-[11px] text-slate-500">
-                          {selectedContract.fileName}
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleAnalyze}
-                        disabled={analyzing}
-                        style={{
-                          width: '100%',
-                          height: '44px',
-                          marginTop: '16px',
-                          borderRadius: '12px',
-                          backgroundColor: analyzing ? '#AAB6E8' : '#6C80DD',
-                          color: '#FFFFFF',
-                          fontSize: '13px',
-                          fontWeight: 700,
-                          border: 'none',
-                          cursor: analyzing ? 'not-allowed' : 'pointer',
-                          boxShadow: '0 8px 18px rgba(108, 128, 221, 0.22)',
-                        }}
-                      >
-                        {analyzing ? '분석 요청 중...' : '선택한 계약서 분석 요청'}
-                      </button>
-                    </>
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-[12px] text-slate-400">
-                      먼저 계약서를 선택해주세요.
-                    </div>
-                  )}
-                </div>
-              </SectionCard>
 
               <SectionCard
                 title="계약서 삭제 이력 조회"
