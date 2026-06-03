@@ -669,8 +669,8 @@ export default function SharePage() {
 
                                 <p className="text-sm font-extrabold text-[#26324D]">
                                   {getRiskTypeLabel(
-                                    risk?.risk_type ??
-                                      risk?.title ??
+                                    risk?.title ??
+                                      risk?.risk_type ??
                                       risk?.category ??
                                       risk?.clause_title ??
                                       risk?.clause
