@@ -517,26 +517,32 @@ export default function SharePage() {
                 <aside className="flex flex-col gap-5">
                   <section className="rounded-[28px] border border-[#E4E9F5] bg-white px-6 py-7 shadow-[0_14px_34px_rgba(95,117,177,0.08)]">
                     <div className="flex items-center gap-6">
-                      <div className="flex h-[128px] w-[128px] shrink-0 items-center justify-center rounded-full bg-[#E4E7EE] p-[13px]">
-                        <div
-                          className="flex h-full w-full items-center justify-center rounded-full"
-                          style={{
-                            background: `conic-gradient(#6B7CF6 ${
-                              score !== null ? score * 3.6 : 0
-                            }deg, #E4E7EE 0deg)`,
-                          }}
-                        >
-                          <div className="flex h-[82px] w-[82px] items-center justify-center rounded-full bg-white">
-                            <div className="flex items-end justify-center">
-                              <span className="text-[38px] font-extrabold leading-none tracking-[-0.06em] text-[#26324D]">
+                      <div className="shrink-0">
+                        {(() => {
+                          const s = Math.max(0, Math.min(100, score ?? 0));
+                          const size = 128;
+                          const sw = 14;
+                          const center = size / 2;
+                          const radius = (size - sw) / 2;
+                          const circumference = 2 * Math.PI * radius;
+                          const dashOffset = circumference * (1 - s / 100);
+                          return (
+                            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label={`계약 안정도 ${s}점`}>
+                              <circle cx={center} cy={center} r={radius} fill="none" stroke="#E5E7EB" strokeWidth={sw} />
+                              <circle cx={center} cy={center} r={radius} fill="none" stroke="#6C80DD" strokeWidth={sw}
+                                strokeDasharray={circumference} strokeDashoffset={dashOffset}
+                                strokeLinecap="butt" transform={`rotate(-90 ${center} ${center})`} />
+                              <text x={center} y={center} textAnchor="middle" dominantBaseline="middle"
+                                fill="#0F172A" fontSize="30" fontWeight="600" letterSpacing="-0.04em" dy="-8">
                                 {score ?? '-'}
-                              </span>
-                              <span className="mb-1 ml-1 text-xs font-bold text-[#6E7890]">
+                              </text>
+                              <text x={center} y={center} textAnchor="middle" dominantBaseline="middle"
+                                fill="#64748B" fontSize="12" fontWeight="500" dy="20">
                                 점
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                              </text>
+                            </svg>
+                          );
+                        })()}
                       </div>
 
                       <div className="min-w-0">
