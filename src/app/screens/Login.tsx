@@ -23,6 +23,11 @@ export function Login() {
     navigate('/');
   };
 
+  const API_URL = (import.meta as any).env.VITE_API_URL || 'http://127.0.0.1:8000';
+  const handleSocialLogin = (provider: 'google' | 'naver' | 'kakao') => {
+    window.location.href = `${API_URL}/api/v1/auth/${provider}`;
+  };
+
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       setIsLoginErrorOpen(true);
@@ -213,6 +218,7 @@ export function Login() {
                 <div className="mt-5 space-y-3 sm:mt-6">
                   <button
                     type="button"
+                    onClick={() => handleSocialLogin('google')}
                     className="flex h-[52px] w-full items-center justify-center rounded-[16px] border border-slate-200/80 bg-white/94 px-4 text-[15px] font-medium text-slate-700 shadow-sm transition-colors hover:bg-white sm:h-[56px] sm:rounded-[18px] sm:text-[16px]"
                   >
                     <span className="mr-3 text-[22px] font-semibold text-[#4285F4]">
@@ -223,6 +229,7 @@ export function Login() {
 
                   <button
                     type="button"
+                    onClick={() => handleSocialLogin('naver')}
                     className="flex h-[52px] w-full items-center justify-center rounded-[16px] border border-slate-200/80 bg-white/94 px-4 text-[15px] font-medium text-slate-700 shadow-sm transition-colors hover:bg-white sm:h-[56px] sm:rounded-[18px] sm:text-[16px]"
                   >
                     <span className="mr-3 text-[22px] font-extrabold text-[#03C75A]">
@@ -233,6 +240,7 @@ export function Login() {
 
                   <button
                     type="button"
+                    onClick={() => handleSocialLogin('kakao')}
                     className="flex h-[52px] w-full items-center justify-center rounded-[16px] border border-[#F2D500] bg-[#FEE500] px-4 text-[15px] font-semibold text-[#191919] shadow-sm transition-colors hover:brightness-95 sm:h-[56px] sm:rounded-[18px] sm:text-[16px]"
                   >
                     <span className="mr-3 text-[18px] font-black">K</span>
