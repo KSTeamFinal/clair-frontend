@@ -489,7 +489,7 @@ export default function ChatSessionScreen() {
       await client.post(`/api/v1/chat/sessions/${currentSessionId}/messages`, {
         content: nextText,
         message_type: 'question',
-      });
+      }, { timeout: 120000 });
 
       await refreshSelectedSession(currentSessionId);
 
