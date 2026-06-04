@@ -53,6 +53,7 @@ type AnalysisResult = {
   fileName: string;
   analyzedDate: string;
   safetyScore: number;
+  contractType: string;
   contractPeriod: string;
   contractPeriodDetail: string;
   salary: string;
@@ -71,6 +72,7 @@ const DEFAULT_ANALYSIS: AnalysisResult = {
   fileName: '근로계약서.pdf',
   analyzedDate: '분석 완료',
   safetyScore: 0,
+  contractType: 'unknown',
   contractPeriod: '-',
   contractPeriodDetail: '-',
   salary: '-',
@@ -171,6 +173,7 @@ function normalizeAnalysis(data: any): AnalysisResult {
 
   return {
     fileName: data?.original_filename ?? '근로계약서.pdf',
+    contractType: String(data?.contract_type ?? 'unknown').toLowerCase(),
     analyzedDate: formatDate(
       data?.analysis_completed_at ??
         data?.analysis?.created_at ??
@@ -793,7 +796,17 @@ export function ResultDashboard() {
               </div>
               <div className="min-w-0 flex-1 pt-1">
                 <span className="block text-[15px] font-medium text-slate-500">
-                  {analysis.monthlyWageIsEstimated ? '예상 월급여' : '월 급여'}
+                  {analysis.monthlyWageIsEstimated ? '예상 월급여' : (() => {
+                    switch (analysis.contractType) {
+                      case 'service':      return '용역 금액';
+                      case 'freelance':    return '프로젝트 보수';
+                      case 'nda':          return '계약 금액';
+                      case 'company_rule': return '급여 기준';
+                      case 'labor':
+                      case 'employment':   return '월 급여';
+                      default:             return '계약 금액';
+                    }
+                  })()}
                 </span>
               </div>
             </div>
