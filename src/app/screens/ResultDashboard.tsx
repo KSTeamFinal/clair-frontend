@@ -60,6 +60,11 @@ type AnalysisResult = {
   summaryText: string;
   risks: RiskItem[];
   compliance: ComplianceItem[];
+  hourlyWage: number | null;
+  weeklyWorkHours: number | null;
+  weeklyWorkDays: number | null;
+  monthlyWage: number | null;
+  monthlyWageIsEstimated: boolean;
 };
 
 const DEFAULT_ANALYSIS: AnalysisResult = {
@@ -73,6 +78,11 @@ const DEFAULT_ANALYSIS: AnalysisResult = {
   summaryText: '분석 결과를 불러오는 중입니다.',
   risks: [],
   compliance: [],
+  hourlyWage: null,
+  weeklyWorkHours: null,
+  weeklyWorkDays: null,
+  monthlyWage: null,
+  monthlyWageIsEstimated: false,
 };
 
 function normalizeRiskLevel(value: unknown): RiskLevel {
@@ -121,6 +131,13 @@ function getKeyInfoValue(keyInfo: any, keys: string[], fallback = '-') {
     if (val !== undefined && val !== null && val !== '') return String(val);
   }
   return fallback;
+}
+
+function toNum(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  const v = typeof raw === 'object' && raw !== null && 'value' in raw ? (raw as any).value : raw;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function normalizeAnalysis(data: any): AnalysisResult {
@@ -186,6 +203,11 @@ function normalizeAnalysis(data: any): AnalysisResult {
       data?.summary ??
       '계약서 분석 결과를 확인해보세요.',
     risks,
+    hourlyWage: toNum(keyInfo?.hourly_wage),
+    weeklyWorkHours: toNum(keyInfo?.weekly_work_hours),
+    weeklyWorkDays: toNum(keyInfo?.weekly_work_days),
+    monthlyWage: toNum(keyInfo?.monthly_wage),
+    monthlyWageIsEstimated: !!(keyInfo?.monthly_wage_is_estimated === true || keyInfo?.monthly_wage_is_estimated?.value === true),
     compliance: Array.isArray(data?.compliance_results)
       ? data.compliance_results.map((c: any) => ({
           clauseId: c?.clause_id ?? '',
@@ -732,47 +754,132 @@ export function ResultDashboard() {
     );
   };
 
-  const SummaryCards = () => (
-    <div className="grid grid-cols-2 gap-4">
-      <div className="min-w-0 rounded-[22px] border border-slate-100 bg-white px-5 py-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-sky-50 text-sky-600">
-            <Calendar size={18} />
-          </div>
-          <div className="min-w-0 pt-1">
-            <span className="block text-[15px] font-medium text-slate-500">
-              계약 기간
-            </span>
-          </div>
-        </div>
-        <div className="mt-6 text-[24px] font-semibold tracking-[-0.04em] text-slate-900 sm:text-[28px]">
-          {analysis.contractPeriod}
-        </div>
-        <p className="mt-2 text-[14px] leading-7 text-slate-500">
-          {analysis.contractPeriodDetail}
-        </p>
-      </div>
+  const formatWon = (value: number) =>
+    new Intl.NumberFormat('ko-KR').format(Math.round(value)) + '원';
 
-      <div className="min-w-0 rounded-[22px] border border-slate-100 bg-white px-5 py-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-emerald-50 text-emerald-600">
-            <DollarSign size={18} />
+  const SummaryCards = () => {
+    const hasWageBreakdown = analysis.hourlyWage || analysis.weeklyWorkHours || analysis.monthlyWage;
+    const weeklyHolidayHours =
+      analysis.weeklyWorkHours && analysis.weeklyWorkHours >= 15
+        ? (analysis.weeklyWorkHours / 40) * 8
+        : 0;
+    const weeklyHolidayPay =
+      analysis.hourlyWage && weeklyHolidayHours > 0
+        ? analysis.hourlyWage * weeklyHolidayHours * (365 / 12 / 7)
+        : 0;
+
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="min-w-0 rounded-[22px] border border-slate-100 bg-white px-5 py-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-sky-50 text-sky-600">
+                <Calendar size={18} />
+              </div>
+              <div className="min-w-0 pt-1">
+                <span className="block text-[15px] font-medium text-slate-500">계약 기간</span>
+              </div>
+            </div>
+            <div className="mt-6 text-[24px] font-semibold tracking-[-0.04em] text-slate-900 sm:text-[28px]">
+              {analysis.contractPeriod}
+            </div>
+            <p className="mt-2 text-[14px] leading-7 text-slate-500">{analysis.contractPeriodDetail}</p>
           </div>
-          <div className="min-w-0 pt-1">
-            <span className="block text-[15px] font-medium text-slate-500">
-              월 급여
-            </span>
+
+          <div className="min-w-0 rounded-[22px] border border-slate-100 bg-white px-5 py-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-emerald-50 text-emerald-600">
+                <DollarSign size={18} />
+              </div>
+              <div className="min-w-0 flex-1 pt-1">
+                <span className="block text-[15px] font-medium text-slate-500">
+                  {analysis.monthlyWageIsEstimated ? '예상 월급여' : '월 급여'}
+                </span>
+              </div>
+            </div>
+            <div className="mt-6 flex flex-wrap items-end gap-2">
+              <span className="text-[24px] font-semibold tracking-[-0.04em] text-slate-900 sm:text-[28px]">
+                {analysis.monthlyWage ? formatWon(analysis.monthlyWage) : analysis.salary}
+              </span>
+              {analysis.monthlyWageIsEstimated && (
+                <span className="mb-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                  추정값
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-[13px] leading-6 text-slate-500">
+              {analysis.monthlyWageIsEstimated
+                ? '시간급 기반으로 계산한 추정 금액이에요.'
+                : analysis.salaryDetail}
+            </p>
           </div>
         </div>
-        <div className="mt-6 text-[24px] font-semibold tracking-[-0.04em] text-slate-900 sm:text-[28px]">
-          {analysis.salary}
-        </div>
-        <p className="mt-2 text-[14px] leading-7 text-slate-500">
-          {analysis.salaryDetail}
-        </p>
+
+        {hasWageBreakdown && (
+          <div className="rounded-[22px] border border-slate-100 bg-white px-5 py-5 shadow-sm">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-violet-50 text-violet-600">
+                <DollarSign size={16} />
+              </div>
+              <span className="text-[14px] font-semibold text-slate-800">급여 산출 내역</span>
+              {analysis.monthlyWageIsEstimated && (
+                <span className="ml-auto rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
+                  시간급 기반 추정
+                </span>
+              )}
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {analysis.hourlyWage && (
+                <div className="rounded-[14px] bg-slate-50 px-4 py-3">
+                  <p className="text-[11px] text-slate-500">시간급</p>
+                  <p className="mt-1 text-[15px] font-semibold text-slate-900">
+                    {formatWon(analysis.hourlyWage)}
+                  </p>
+                </div>
+              )}
+              {analysis.weeklyWorkHours && (
+                <div className="rounded-[14px] bg-slate-50 px-4 py-3">
+                  <p className="text-[11px] text-slate-500">주당 근무</p>
+                  <p className="mt-1 text-[15px] font-semibold text-slate-900">
+                    {analysis.weeklyWorkHours}시간
+                    {analysis.weeklyWorkDays ? ` (${analysis.weeklyWorkDays}일)` : ''}
+                  </p>
+                </div>
+              )}
+              <div className="rounded-[14px] bg-slate-50 px-4 py-3">
+                <p className="text-[11px] text-slate-500">주휴수당</p>
+                <p className="mt-1 text-[15px] font-semibold text-slate-900">
+                  {weeklyHolidayPay > 0
+                    ? `월 ${formatWon(weeklyHolidayPay)}`
+                    : <span className="text-slate-400 text-[13px]">해당 없음</span>}
+                </p>
+                {analysis.weeklyWorkHours && analysis.weeklyWorkHours < 15 && (
+                  <p className="mt-0.5 text-[10px] text-slate-400">주 15시간 미만</p>
+                )}
+              </div>
+              {analysis.monthlyWage && (
+                <div className={`rounded-[14px] px-4 py-3 ${analysis.monthlyWageIsEstimated ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+                  <p className={`text-[11px] ${analysis.monthlyWageIsEstimated ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    {analysis.monthlyWageIsEstimated ? '예상 월급여' : '월급여'}
+                  </p>
+                  <p className={`mt-1 text-[15px] font-semibold ${analysis.monthlyWageIsEstimated ? 'text-amber-800' : 'text-emerald-800'}`}>
+                    {formatWon(analysis.monthlyWage)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {analysis.monthlyWageIsEstimated && (
+              <p className="mt-3 text-[11px] leading-5 text-slate-400">
+                * 계약서에 월급여가 명시되지 않아 시간급 × 근무시간 기준으로 계산한 추정 금액입니다. 실제 지급액과 다를 수 있어요.
+              </p>
+            )}
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div
