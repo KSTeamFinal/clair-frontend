@@ -574,7 +574,7 @@ export default function ContractManagementScreen() {
     try {
       setAnalyzing(true);
 
-      await client.post(`/api/v1/contracts/${selectedContract.id}/request-analysis`);
+      await client.post(`/api/v1/contracts/${selectedContract.id}/analyze`);
 
       navigate(`/loading/${selectedContract.id}`);
     } catch {

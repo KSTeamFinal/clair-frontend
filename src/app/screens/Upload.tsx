@@ -189,7 +189,7 @@ export function Upload() {
       }
 
       // 2. 분석 요청
-      await client.post(`/api/v1/contracts/${contractId}/request-analysis`);
+      await client.post(`/api/v1/contracts/${contractId}/analyze`);
 
       navigate(`/loading/${contractId}`);
     } catch (error: any) {
