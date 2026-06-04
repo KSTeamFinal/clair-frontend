@@ -792,7 +792,9 @@ export function ResultDashboard() {
                 <DollarSign size={18} />
               </div>
               <div className="min-w-0 flex-1 pt-1">
-                <span className="block text-[15px] font-medium text-slate-500">월 급여</span>
+                <span className="block text-[15px] font-medium text-slate-500">
+                  {analysis.monthlyWageIsEstimated ? '예상 월급여' : '월 급여'}
+                </span>
               </div>
             </div>
             <div className="mt-6 flex flex-wrap items-end gap-2">
