@@ -141,7 +141,7 @@ export function Home() {
 
   const completedScores = completedContracts
     .map(getContractSafetyScore)
-    .filter((score): score is number => score !== null);
+    .filter((score): score is number => score !== null)
     .filter((score) => Number.isFinite(score));
 
   const averageSafetyScore =
