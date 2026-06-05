@@ -29,6 +29,21 @@ type RawMessage = {
 type RawSession = {
   id: number;
   contract_id?: number | null;
+  contractId?: number | null;
+  contract?: {
+    id?: number;
+    contract_id?: number;
+    title?: string;
+    name?: string;
+    file_name?: string;
+    filename?: string;
+    original_filename?: string;
+  } | null;
+  contract_title?: string | null;
+  contractTitle?: string | null;
+  contract_file_name?: string | null;
+  contractFileName?: string | null;
+  original_filename?: string | null;
   title?: string;
   total_message_count?: number;
   message_count?: number;
@@ -66,9 +81,12 @@ type Message = {
 
 type Session = {
   id: number;
+  contractId: number | null;
+  contractName: string | null;
   title: string;
   createdAt: string;
   updatedAt: string;
+  sortTime: number;
   messageCount: number;
   preview: string;
   messages: Message[];
@@ -108,6 +126,13 @@ const formatTime = (value?: string | null) => {
   });
 };
 
+const getTimeValue = (value?: string | null) => {
+  if (!value) return 0;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+};
+
 const normalizeMessage = (message: RawMessage, index: number): Message => {
   const sender = String(message.sender ?? message.role ?? '').toLowerCase();
   const rawContent = message.content ?? message.message ?? message.text ?? '';
@@ -143,14 +168,46 @@ const normalizeMessage = (message: RawMessage, index: number): Message => {
 const normalizeSession = (session: RawSession): Session => {
   const messages = (session.messages ?? []).map(normalizeMessage);
   const lastMessage = messages[messages.length - 1];
+  const contractId =
+    session.contract_id ??
+    session.contractId ??
+    session.contract?.id ??
+    session.contract?.contract_id ??
+    null;
+
+  const contractName =
+    session.contract?.original_filename ??
+    session.contract?.file_name ??
+    session.contract?.filename ??
+    session.contract?.title ??
+    session.contract?.name ??
+    session.contract_title ??
+    session.contractTitle ??
+    session.contract_file_name ??
+    session.contractFileName ??
+    session.original_filename ??
+    null;
+
+  const title = session.title?.trim();
+  const shouldUseContractName =
+    contractName && (!title || title.startsWith('채팅 세션') || title.startsWith('새 채팅 세션'));
+  const sortSource =
+    session.last_message_at ??
+    session.updated_at ??
+    session.updatedAt ??
+    session.created_at ??
+    session.createdAt;
 
   return {
     id: session.id,
-    title: session.title ?? `채팅 세션 ${session.id}`,
+    contractId,
+    contractName,
+    title: shouldUseContractName ? contractName : title || `채팅 세션 ${session.id}`,
     createdAt: formatDate(session.created_at ?? session.createdAt),
     updatedAt: formatDate(
       session.last_message_at ?? session.updated_at ?? session.updatedAt
     ),
+    sortTime: getTimeValue(sortSource),
     messageCount:
       session.total_message_count ??
       session.message_count ??
@@ -159,6 +216,7 @@ const normalizeSession = (session: RawSession): Session => {
       0,
     preview:
       session.preview ??
+      (contractName ? `${contractName} 기반 상담` : null) ??
       session.last_question ??
       session.first_question ??
       session.last_message ??
@@ -216,8 +274,23 @@ function SessionListItem({
                 <Clock3 className="h-3 w-3" />
                 {session.createdAt}
               </span>
+              <span
+                className={`rounded-full px-2 py-0.5 font-medium ${
+                  session.contractId
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {session.contractId ? '계약서 연결됨' : '일반 상담'}
+              </span>
               <span>{session.messageCount}개</span>
             </div>
+
+            {session.contractName && (
+              <p className="mt-1 truncate text-[10px] font-medium text-[#6C80DD]">
+                {session.contractName}
+              </p>
+            )}
           </div>
         </button>
 
@@ -296,7 +369,9 @@ export default function ChatSessionScreen() {
         ? res.data
         : res.data.sessions ?? [];
 
-      const normalizedSessions = rawSessions.map(normalizeSession);
+      const normalizedSessions = rawSessions
+        .map(normalizeSession)
+        .sort((a, b) => b.sortTime - a.sortTime || b.id - a.id);
 
       setSessions((prev) => {
         const selectedDetail = prev.find(
@@ -330,11 +405,14 @@ export default function ChatSessionScreen() {
   }, []);
 
   const filteredSessions = useMemo(() => {
-    return sessions.filter(
-      (session) =>
-        session.title.toLowerCase().includes(search.toLowerCase()) ||
-        session.preview.toLowerCase().includes(search.toLowerCase())
-    );
+    return sessions
+      .filter(
+        (session) =>
+          session.title.toLowerCase().includes(search.toLowerCase()) ||
+          session.preview.toLowerCase().includes(search.toLowerCase()) ||
+          (session.contractName ?? '').toLowerCase().includes(search.toLowerCase())
+      )
+      .sort((a, b) => b.sortTime - a.sortTime || b.id - a.id);
   }, [sessions, search]);
 
   const visibleSessions = listOpen
@@ -398,12 +476,14 @@ export default function ChatSessionScreen() {
     try {
       const res = await client.post('/api/v1/chat/sessions', {
         contract_id: null,
-        title: `새 채팅 세션 ${sessions.length + 1}`,
+        title: `일반 채팅 세션 ${sessions.length + 1}`,
       });
 
       const newSession = normalizeSession(res.data);
 
-      setSessions((prev) => [newSession, ...prev]);
+      setSessions((prev) =>
+        [newSession, ...prev].sort((a, b) => b.sortTime - a.sortTime || b.id - a.id)
+      );
       setSelectedSessionId(newSession.id);
       setDetailOpen(true);
       setMessageInput('');
@@ -473,16 +553,19 @@ export default function ChatSessionScreen() {
     };
 
     setSessions((prev) =>
-      prev.map((session) =>
-        session.id === currentSessionId
-          ? {
-              ...session,
-              preview: nextText,
-              messageCount: session.messageCount + 1,
-              messages: [...session.messages, optimisticUserMessage],
-            }
-          : session
-      )
+      prev
+        .map((session) =>
+          session.id === currentSessionId
+            ? {
+                ...session,
+                preview: nextText,
+                sortTime: optimisticUserMessage.id,
+                messageCount: session.messageCount + 1,
+                messages: [...session.messages, optimisticUserMessage],
+              }
+            : session
+        )
+        .sort((a, b) => b.sortTime - a.sortTime || b.id - a.id)
     );
 
     try {
@@ -727,9 +810,32 @@ export default function ChatSessionScreen() {
                           </div>
 
                           <div className="rounded-xl bg-white px-3 py-2">
+                            <p className="text-[10px] text-slate-400">세션 유형</p>
+                            <p
+                              className={`mt-1 text-[11px] font-semibold sm:text-[12px] ${
+                                selectedSession.contractId
+                                  ? 'text-emerald-600'
+                                  : 'text-slate-600'
+                              }`}
+                            >
+                              {selectedSession.contractId ? '계약서 연결 상담' : '일반 상담'}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl bg-white px-3 py-2">
                             <p className="text-[10px] text-slate-400">세션 제목</p>
                             <p className="mt-1 truncate text-[11px] font-medium text-slate-700 sm:text-[12px]">
                               {selectedSession.title}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl bg-white px-3 py-2">
+                            <p className="text-[10px] text-slate-400">연결 계약서</p>
+                            <p className="mt-1 truncate text-[11px] font-medium text-slate-700 sm:text-[12px]">
+                              {selectedSession.contractName ??
+                                (selectedSession.contractId
+                                  ? `계약서 ID ${selectedSession.contractId}`
+                                  : '연결된 계약서 없음')}
                             </p>
                           </div>
                         </div>

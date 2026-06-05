@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import client from '../../api/client';
 import {
@@ -128,17 +128,24 @@ function getKeyInfoValue(keyInfo: any, keys: string[], fallback = '-') {
   for (const key of keys) {
     const raw = keyInfo?.[key];
     if (raw === undefined || raw === null || raw === '') continue;
-    // {value, reason} 중첩 구조 처리 (AI 응답 형식)
+
     const val = typeof raw === 'object' && 'value' in raw ? raw.value : raw;
     if (val !== undefined && val !== null && val !== '') return String(val);
   }
+
   return fallback;
 }
 
 function toNum(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
-  const v = typeof raw === 'object' && raw !== null && 'value' in raw ? (raw as any).value : raw;
+
+  const v =
+    typeof raw === 'object' && raw !== null && 'value' in raw
+      ? (raw as any).value
+      : raw;
+
   const n = Number(v);
+
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
@@ -180,10 +187,20 @@ function normalizeAnalysis(data: any): AnalysisResult {
         data?.updated_at ??
         data?.created_at,
     ),
-    safetyScore: Number(data?.safety_score ?? data?.analysis?.safety_score ?? calculatedScore) || 0,
+    safetyScore:
+      Number(data?.safety_score ?? data?.analysis?.safety_score ?? calculatedScore) || 0,
     contractPeriod: getKeyInfoValue(
       keyInfo,
-      ['start_date', 'end_date', 'contract_period', 'contractPeriod', 'period', 'duration', '근로계약기간', '계약기간'],
+      [
+        'start_date',
+        'end_date',
+        'contract_period',
+        'contractPeriod',
+        'period',
+        'duration',
+        '근로계약기간',
+        '계약기간',
+      ],
       '-',
     ),
     contractPeriodDetail: getKeyInfoValue(
@@ -193,7 +210,18 @@ function normalizeAnalysis(data: any): AnalysisResult {
     ),
     salary: getKeyInfoValue(
       keyInfo,
-      ['amount_text', 'amount_value', 'salary', 'monthly_salary', 'monthlySalary', 'wage', 'pay', '급여', '월급', '임금'],
+      [
+        'amount_text',
+        'amount_value',
+        'salary',
+        'monthly_salary',
+        'monthlySalary',
+        'wage',
+        'pay',
+        '급여',
+        '월급',
+        '임금',
+      ],
       '-',
     ),
     salaryDetail: getKeyInfoValue(
@@ -202,15 +230,16 @@ function normalizeAnalysis(data: any): AnalysisResult {
       '계약서 기준',
     ),
     summaryText:
-      data?.analysis?.summary ??
-      data?.summary ??
-      '계약서 분석 결과를 확인해보세요.',
+      data?.analysis?.summary ?? data?.summary ?? '계약서 분석 결과를 확인해보세요.',
     risks,
     hourlyWage: toNum(keyInfo?.hourly_wage),
     weeklyWorkHours: toNum(keyInfo?.weekly_work_hours),
     weeklyWorkDays: toNum(keyInfo?.weekly_work_days),
     monthlyWage: toNum(keyInfo?.monthly_wage),
-    monthlyWageIsEstimated: !!(keyInfo?.monthly_wage_is_estimated === true || keyInfo?.monthly_wage_is_estimated?.value === true),
+    monthlyWageIsEstimated: !!(
+      keyInfo?.monthly_wage_is_estimated === true ||
+      keyInfo?.monthly_wage_is_estimated?.value === true
+    ),
     compliance: Array.isArray(data?.compliance_results)
       ? data.compliance_results.map((c: any) => ({
           clauseId: c?.clause_id ?? '',
@@ -239,6 +268,9 @@ export function ResultDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [showQuestions, setShowQuestions] = useState(false);
+  const [showAllRisks, setShowAllRisks] = useState(false);
+  const [showCompliance, setShowCompliance] = useState(false);
+
   const [inputMessage, setInputMessage] = useState('');
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [isSending, setIsSending] = useState(false);
@@ -252,8 +284,10 @@ export function ResultDashboard() {
   const [createdSharePassword, setCreatedSharePassword] = useState('');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [userProfileImage, setUserProfileImage] = useState<string | null>(null);
+  const [userDisplayName, setUserDisplayName] = useState('사용자');
 
-  const [dashboardMessages, setDashboardMessages] = useState<Message[]>([
+  const [, setDashboardMessages] = useState<Message[]>([
     { role: 'bot', text: '분석 결과를 불러오고 있어요.', type: 'text' },
   ]);
 
@@ -304,6 +338,28 @@ export function ResultDashboard() {
     setSessionId(Number(newSessionId));
     return Number(newSessionId);
   };
+
+  useEffect(() => {
+    const loadStoredProfile = () => {
+      const savedImage = localStorage.getItem('profileImage');
+      setUserProfileImage(savedImage || null);
+
+      const stored = localStorage.getItem('userInfo');
+      if (!stored) return;
+
+      try {
+        const userInfo = JSON.parse(stored);
+        setUserDisplayName(userInfo.nickname || userInfo.name || '사용자');
+      } catch (error) {
+        console.error('저장된 유저 정보 파싱 실패:', error);
+      }
+    };
+
+    loadStoredProfile();
+
+    window.addEventListener('storage', loadStoredProfile);
+    return () => window.removeEventListener('storage', loadStoredProfile);
+  }, []);
 
   useEffect(() => {
     const fetchAnalysis = async () => {
@@ -474,59 +530,56 @@ export function ResultDashboard() {
   };
 
   const handleCreateShare = async () => {
-  if (!contractId) {
-    setShareError('계약서 ID를 찾을 수 없어요.');
-    return;
-  }
-
-  if (!sharePassword.trim()) {
-    setShareError('공유 비밀번호를 입력해주세요.');
-    return;
-  }
-
-  try {
-    setIsSharing(true);
-    setShareError('');
-
-    const response = await client.post(`/api/v1/contracts/${contractId}/share`, {
-      password: sharePassword,
-      expire_days: 7,
-    });
-
-    const token = response.data?.token;
-    const shareId = response.data?.id ?? response.data?.share_id;
-    const shareUrlFromServer = response.data?.share_url ?? response.data?.url;
-
-    // ✅ 환경변수 기반 프론트 URL
-    const FRONT_URL =
-      import.meta.env.VITE_FRONT_URL || window.location.origin;
-
-    // ✅ 공유 URL 생성
-    const shareUrl = shareUrlFromServer
-      ? shareUrlFromServer
-      : token
-        ? `${FRONT_URL}/share/${token}`
-        : shareId
-          ? `${FRONT_URL}/share/${shareId}`
-          : '';
-
-    if (!shareUrl) {
-      throw new Error('공유 URL을 응답에서 찾지 못했어요.');
+    if (!contractId) {
+      setShareError('계약서 ID를 찾을 수 없어요.');
+      return;
     }
 
-    setCreatedShareUrl(shareUrl);
-    setCreatedSharePassword(sharePassword);
+    if (!sharePassword.trim()) {
+      setShareError('공유 비밀번호를 입력해주세요.');
+      return;
+    }
 
-    setShowShareCreateModal(false);
-    setShowShareResultModal(true);
-    setSharePassword('');
-  } catch (error) {
-    console.error('공유 링크 생성 실패:', error);
-    setShareError('공유 링크 생성에 실패했어요. 잠시 후 다시 시도해주세요.');
-  } finally {
-    setIsSharing(false);
-  }
-};
+    try {
+      setIsSharing(true);
+      setShareError('');
+
+      const response = await client.post(`/api/v1/contracts/${contractId}/share`, {
+        password: sharePassword,
+        expire_days: 7,
+      });
+
+      const token = response.data?.token;
+      const shareId = response.data?.id ?? response.data?.share_id;
+      const shareUrlFromServer = response.data?.share_url ?? response.data?.url;
+
+      const FRONT_URL = import.meta.env.VITE_FRONT_URL || window.location.origin;
+
+      const shareUrl = shareUrlFromServer
+        ? shareUrlFromServer
+        : token
+          ? `${FRONT_URL}/share/${token}`
+          : shareId
+            ? `${FRONT_URL}/share/${shareId}`
+            : '';
+
+      if (!shareUrl) {
+        throw new Error('공유 URL을 응답에서 찾지 못했어요.');
+      }
+
+      setCreatedShareUrl(shareUrl);
+      setCreatedSharePassword(sharePassword);
+
+      setShowShareCreateModal(false);
+      setShowShareResultModal(true);
+      setSharePassword('');
+    } catch (error) {
+      console.error('공유 링크 생성 실패:', error);
+      setShareError('공유 링크 생성에 실패했어요. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   const handleCopyShareUrl = async () => {
     if (!createdShareUrl) return;
@@ -626,7 +679,9 @@ export function ResultDashboard() {
     );
   };
 
-  const RiskCards = () => {
+  const RiskCards = ({ limit }: { limit?: number }) => {
+    const visibleRisks = limit ? analysis.risks.slice(0, limit) : analysis.risks;
+
     if (analysis.risks.length === 0) {
       return (
         <div className="rounded-[18px] border border-emerald-100 bg-emerald-50 p-4">
@@ -649,7 +704,7 @@ export function ResultDashboard() {
 
     return (
       <div className="space-y-3">
-        {analysis.risks.map((risk, index) => {
+        {visibleRisks.map((risk, index) => {
           const isHigh = risk.level === 'high';
           const isMedium = risk.level === 'medium';
 
@@ -689,7 +744,7 @@ export function ResultDashboard() {
                       {risk.title}
                     </h4>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold text-white ${
+                      className={`inline-flex min-w-[44px] items-center justify-center rounded-full px-2 py-0.5 text-center text-[11px] font-semibold text-white ${
                         isHigh
                           ? 'bg-red-500'
                           : isMedium
@@ -708,51 +763,121 @@ export function ResultDashboard() {
             </div>
           );
         })}
+
+        {limit && analysis.risks.length > limit && (
+          <button
+            type="button"
+            onClick={() => setShowAllRisks((prev) => !prev)}
+            className="inline-flex h-[46px] w-full items-center justify-center gap-2 rounded-[16px] border border-[#DCE4FF] bg-[#F8FAFF] text-[14px] font-semibold text-[#5F75B1] transition-all hover:bg-white"
+          >
+            {showAllRisks ? '위험 요소 접기' : `위험 요소 전체 보기 (${analysis.risks.length})`}
+            {showAllRisks ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+        )}
       </div>
     );
   };
 
-  const ComplianceCards = () => {
+  const ComplianceCards = ({ limit }: { limit?: number }) => {
+    const visibleCompliance = limit
+      ? analysis.compliance.slice(0, limit)
+      : analysis.compliance;
+
     if (analysis.compliance.length === 0) {
       return (
         <div className="rounded-[18px] border border-slate-100 bg-slate-50 p-4">
-          <p className="text-[13px] text-slate-400 text-center">법령 준수 데이터가 없어요.</p>
+          <p className="text-center text-[13px] text-slate-400">
+            법령 준수 데이터가 없어요.
+          </p>
         </div>
       );
     }
 
     const statusStyle = (status: ComplianceStatus) => {
-      if (status === '위반') return { bg: 'border-red-100 bg-red-50', icon: <XCircle size={15} />, badge: 'bg-red-500', iconWrap: 'bg-gradient-to-br from-red-500 to-orange-500' };
-      if (status === '주의') return { bg: 'border-amber-100 bg-amber-50', icon: <AlertTriangle size={15} />, badge: 'bg-amber-500', iconWrap: 'bg-gradient-to-br from-yellow-500 to-amber-500' };
-      if (status === '적합') return { bg: 'border-emerald-100 bg-emerald-50', icon: <CheckCircle size={15} />, badge: 'bg-emerald-500', iconWrap: 'bg-gradient-to-br from-green-500 to-emerald-500' };
-      return { bg: 'border-slate-100 bg-slate-50', icon: <Scale size={15} />, badge: 'bg-slate-400', iconWrap: 'bg-gradient-to-br from-slate-400 to-slate-500' };
+      if (status === '위반') {
+        return {
+          bg: 'border-red-100 bg-red-50',
+          icon: <XCircle size={15} />,
+          badge: 'bg-red-500',
+          iconWrap: 'bg-gradient-to-br from-red-500 to-orange-500',
+        };
+      }
+
+      if (status === '주의') {
+        return {
+          bg: 'border-amber-100 bg-amber-50',
+          icon: <AlertTriangle size={15} />,
+          badge: 'bg-amber-500',
+          iconWrap: 'bg-gradient-to-br from-yellow-500 to-amber-500',
+        };
+      }
+
+      if (status === '적합') {
+        return {
+          bg: 'border-emerald-100 bg-emerald-50',
+          icon: <CheckCircle size={15} />,
+          badge: 'bg-emerald-500',
+          iconWrap: 'bg-gradient-to-br from-green-500 to-emerald-500',
+        };
+      }
+
+      return {
+        bg: 'border-slate-100 bg-slate-50',
+        icon: <Scale size={15} />,
+        badge: 'bg-slate-400',
+        iconWrap: 'bg-gradient-to-br from-slate-400 to-slate-500',
+      };
     };
 
     return (
       <div className="space-y-3">
-        {analysis.compliance.map((item, index) => {
+        {visibleCompliance.map((item, index) => {
           const s = statusStyle(item.status);
+
           return (
             <div key={`${item.clauseId}-${index}`} className={`rounded-[18px] border p-4 ${s.bg}`}>
               <div className="flex items-start gap-3">
-                <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] text-white ${s.iconWrap}`}>
+                <div
+                  className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] text-white ${s.iconWrap}`}
+                >
                   {s.icon}
                 </div>
+
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-[14px] font-semibold text-slate-900">{item.clauseTitle}</h4>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold text-white ${s.badge}`}>
+                    <h4 className="text-[14px] font-semibold text-slate-900">
+                      {item.clauseTitle}
+                    </h4>
+                    <span
+                      className={`inline-flex min-w-[52px] items-center justify-center rounded-full px-2 py-0.5 text-center text-[11px] font-semibold text-white ${s.badge}`}
+                    >
                       {item.status}
                     </span>
                   </div>
+
                   {item.reason && (
-                    <p className="mt-2 text-[13px] leading-6 text-slate-600">{item.reason}</p>
+                    <p className="mt-2 text-[13px] leading-6 text-slate-600">
+                      {item.reason}
+                    </p>
                   )}
                 </div>
               </div>
             </div>
           );
         })}
+
+        {limit && analysis.compliance.length > limit && (
+          <button
+            type="button"
+            onClick={() => setShowCompliance((prev) => !prev)}
+            className="inline-flex h-[46px] w-full items-center justify-center gap-2 rounded-[16px] border border-[#DCE4FF] bg-[#F8FAFF] text-[14px] font-semibold text-[#5F75B1] transition-all hover:bg-white"
+          >
+            {showCompliance
+              ? '법령 준수 검사 접기'
+              : `법령 준수 검사 전체 보기 (${analysis.compliance.length})`}
+            {showCompliance ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+        )}
       </div>
     );
   };
@@ -760,12 +885,39 @@ export function ResultDashboard() {
   const formatWon = (value: number) =>
     new Intl.NumberFormat('ko-KR').format(Math.round(value)) + '원';
 
+  const contractAmountLabel = (() => {
+    if (analysis.monthlyWageIsEstimated) return '예상 월급여';
+
+    switch (analysis.contractType) {
+      case 'service':
+        return '용역 금액';
+      case 'freelance':
+        return '프로젝트 보수';
+      case 'nda':
+        return '계약 금액';
+      case 'company_rule':
+        return '급여 기준';
+      case 'labor':
+      case 'employment':
+        return '월 급여';
+      default:
+        return '계약 금액';
+    }
+  })();
+
+  const contractAmount = analysis.monthlyWage
+    ? formatWon(analysis.monthlyWage)
+    : analysis.salary;
+
   const SummaryCards = () => {
-    const hasWageBreakdown = analysis.hourlyWage || analysis.weeklyWorkHours || analysis.monthlyWage;
+    const hasWageBreakdown =
+      analysis.hourlyWage || analysis.weeklyWorkHours || analysis.monthlyWage;
+
     const weeklyHolidayHours =
       analysis.weeklyWorkHours && analysis.weeklyWorkHours >= 15
         ? (analysis.weeklyWorkHours / 40) * 8
         : 0;
+
     const weeklyHolidayPay =
       analysis.hourlyWage && weeklyHolidayHours > 0
         ? analysis.hourlyWage * weeklyHolidayHours * (365 / 12 / 7)
@@ -773,68 +925,70 @@ export function ResultDashboard() {
 
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="min-w-0 rounded-[22px] border border-slate-100 bg-white px-5 py-6 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-sky-50 text-sky-600">
-                <Calendar size={18} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="min-w-0 rounded-[20px] border border-slate-100 bg-white px-4 py-4 shadow-sm">
+            <div className="flex flex-col items-center text-center">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-sky-50 text-sky-600">
+                <Calendar size={17} />
               </div>
-              <div className="min-w-0 pt-1">
-                <span className="block text-[15px] font-medium text-slate-500">계약 기간</span>
+              <div className="mt-3 min-w-0">
+                <span className="block text-[13px] font-medium text-slate-500">
+                  계약 기간
+                </span>
+                <div className="mt-2 break-words text-[20px] font-semibold tracking-[-0.04em] text-slate-900">
+                  {analysis.contractPeriod}
+                </div>
+                <p className="mt-1 text-[12px] leading-5 text-slate-500">
+                  {analysis.contractPeriodDetail}
+                </p>
               </div>
             </div>
-            <div className="mt-6 text-[24px] font-semibold tracking-[-0.04em] text-slate-900 sm:text-[28px]">
-              {analysis.contractPeriod}
-            </div>
-            <p className="mt-2 text-[14px] leading-7 text-slate-500">{analysis.contractPeriodDetail}</p>
           </div>
 
-          <div className="min-w-0 rounded-[22px] border border-slate-100 bg-white px-5 py-6 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-emerald-50 text-emerald-600">
-                <DollarSign size={18} />
+          <div className="min-w-0 rounded-[20px] border border-slate-100 bg-white px-4 py-4 shadow-sm">
+            <div className="flex flex-col items-center text-center">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-emerald-50 text-emerald-600">
+                <DollarSign size={17} />
               </div>
-              <div className="min-w-0 flex-1 pt-1">
-                <span className="block text-[15px] font-medium text-slate-500">
-                  {analysis.monthlyWageIsEstimated ? '예상 월급여' : (() => {
-                    switch (analysis.contractType) {
-                      case 'service':      return '용역 금액';
-                      case 'freelance':    return '프로젝트 보수';
-                      case 'nda':          return '계약 금액';
-                      case 'company_rule': return '급여 기준';
-                      case 'labor':
-                      case 'employment':   return '월 급여';
-                      default:             return '계약 금액';
-                    }
-                  })()}
+
+              <div className="mt-3 min-w-0">
+                <span className="block text-[13px] font-medium text-slate-500">
+                  {contractAmountLabel}
                 </span>
+
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                  <span className="break-words text-center text-[20px] font-semibold tracking-[-0.04em] text-slate-900">
+                    {contractAmount}
+                  </span>
+
+                  {analysis.monthlyWageIsEstimated && (
+                    <span className="mb-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                      추정값
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-1 text-[12px] leading-5 text-slate-500">
+                  {analysis.monthlyWageIsEstimated
+                    ? '시간급 기반으로 계산한 추정 금액이에요.'
+                    : analysis.salaryDetail}
+                </p>
               </div>
             </div>
-            <div className="mt-6 flex flex-wrap items-end gap-2">
-              <span className="text-[24px] font-semibold tracking-[-0.04em] text-slate-900 sm:text-[28px]">
-                {analysis.monthlyWage ? formatWon(analysis.monthlyWage) : analysis.salary}
-              </span>
-              {analysis.monthlyWageIsEstimated && (
-                <span className="mb-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                  추정값
-                </span>
-              )}
-            </div>
-            <p className="mt-2 text-[13px] leading-6 text-slate-500">
-              {analysis.monthlyWageIsEstimated
-                ? '시간급 기반으로 계산한 추정 금액이에요.'
-                : analysis.salaryDetail}
-            </p>
           </div>
         </div>
 
         {hasWageBreakdown && (
-          <div className="rounded-[22px] border border-slate-100 bg-white px-5 py-5 shadow-sm">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-violet-50 text-violet-600">
+          <div className="rounded-[20px] border border-slate-100 bg-white px-4 py-4 shadow-sm">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-violet-50 text-violet-600">
                 <DollarSign size={16} />
               </div>
-              <span className="text-[14px] font-semibold text-slate-800">급여 산출 내역</span>
+
+              <span className="text-[14px] font-semibold text-slate-800">
+                급여 산출 내역
+              </span>
+
               {analysis.monthlyWageIsEstimated && (
                 <span className="ml-auto rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
                   시간급 기반 추정
@@ -842,41 +996,61 @@ export function ResultDashboard() {
               )}
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {analysis.hourlyWage && (
-                <div className="rounded-[14px] bg-slate-50 px-4 py-3">
-                  <p className="text-[11px] text-slate-500">시간급</p>
-                  <p className="mt-1 text-[15px] font-semibold text-slate-900">
+                <div className="min-h-[78px] rounded-[14px] bg-slate-50 px-4 py-3">
+                  <p className="text-center text-[11px] text-slate-500">시간급</p>
+                  <p className="mt-1 break-words text-center text-[15px] font-semibold leading-6 text-slate-900">
                     {formatWon(analysis.hourlyWage)}
                   </p>
                 </div>
               )}
+
               {analysis.weeklyWorkHours && (
-                <div className="rounded-[14px] bg-slate-50 px-4 py-3">
-                  <p className="text-[11px] text-slate-500">주당 근무</p>
-                  <p className="mt-1 text-[15px] font-semibold text-slate-900">
+                <div className="min-h-[78px] rounded-[14px] bg-slate-50 px-4 py-3">
+                  <p className="text-center text-[11px] text-slate-500">주당 근무</p>
+                  <p className="mt-1 break-words text-center text-[15px] font-semibold leading-6 text-slate-900">
                     {analysis.weeklyWorkHours}시간
                     {analysis.weeklyWorkDays ? ` (${analysis.weeklyWorkDays}일)` : ''}
                   </p>
                 </div>
               )}
-              <div className="rounded-[14px] bg-slate-50 px-4 py-3">
-                <p className="text-[11px] text-slate-500">주휴수당</p>
-                <p className="mt-1 text-[15px] font-semibold text-slate-900">
-                  {weeklyHolidayPay > 0
-                    ? `월 ${formatWon(weeklyHolidayPay)}`
-                    : <span className="text-slate-400 text-[13px]">해당 없음</span>}
+
+              <div className="min-h-[78px] rounded-[14px] bg-slate-50 px-4 py-3">
+                <p className="text-center text-[11px] text-slate-500">주휴수당</p>
+                <p className="mt-1 break-words text-center text-[15px] font-semibold leading-6 text-slate-900">
+                  {weeklyHolidayPay > 0 ? (
+                    `월 ${formatWon(weeklyHolidayPay)}`
+                  ) : (
+                    <span className="text-[13px] text-slate-400">해당 없음</span>
+                  )}
                 </p>
+
                 {analysis.weeklyWorkHours && analysis.weeklyWorkHours < 15 && (
-                  <p className="mt-0.5 text-[10px] text-slate-400">주 15시간 미만</p>
+                  <p className="mt-0.5 text-center text-[10px] text-slate-400">
+                    주 15시간 미만
+                  </p>
                 )}
               </div>
+
               {analysis.monthlyWage && (
-                <div className={`rounded-[14px] px-4 py-3 ${analysis.monthlyWageIsEstimated ? 'bg-amber-50' : 'bg-emerald-50'}`}>
-                  <p className={`text-[11px] ${analysis.monthlyWageIsEstimated ? 'text-amber-600' : 'text-emerald-600'}`}>
+                <div
+                  className={`min-h-[78px] rounded-[14px] px-4 py-3 ${
+                    analysis.monthlyWageIsEstimated ? 'bg-amber-50' : 'bg-emerald-50'
+                  }`}
+                >
+                  <p
+                    className={`text-center text-[11px] ${
+                      analysis.monthlyWageIsEstimated ? 'text-amber-600' : 'text-emerald-600'
+                    }`}
+                  >
                     {analysis.monthlyWageIsEstimated ? '예상 월급여' : '월급여'}
                   </p>
-                  <p className={`mt-1 text-[15px] font-semibold ${analysis.monthlyWageIsEstimated ? 'text-amber-800' : 'text-emerald-800'}`}>
+                  <p
+                    className={`mt-1 break-words text-center text-[15px] font-semibold leading-6 ${
+                      analysis.monthlyWageIsEstimated ? 'text-amber-800' : 'text-emerald-800'
+                    }`}
+                  >
                     {formatWon(analysis.monthlyWage)}
                   </p>
                 </div>
@@ -893,6 +1067,279 @@ export function ResultDashboard() {
       </div>
     );
   };
+
+  const ScoreOverviewCard = () => (
+    <div className="flex h-full items-center justify-center rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm">
+      <div className="flex w-full flex-col items-center gap-4 text-center">
+        <ScoreRing score={safetyScore} size={116} strokeWidth={14} numberFontSize={30} />
+
+        <div className="w-full min-w-0">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <h3 className="text-[24px] font-semibold tracking-[-0.04em] text-slate-900">
+              계약 안정도
+            </h3>
+            <span className="inline-flex min-w-[70px] items-center justify-center rounded-full bg-[#F8FAFF] px-3 py-1 text-center text-[12px] font-semibold text-[#5F75B1]">
+              {scoreLabel}
+            </span>
+          </div>
+
+          <div className="mt-4 grid w-full grid-cols-3 gap-3">
+            <div className="rounded-[16px] bg-red-50 px-3 py-3 text-center">
+              <div className="flex items-center justify-center gap-1 text-red-500">
+                <AlertTriangle size={15} />
+                <span className="text-[20px] font-semibold">{riskCounts.high}</span>
+              </div>
+              <p className="mt-1 text-[12px] text-slate-500">높음</p>
+            </div>
+
+            <div className="rounded-[16px] bg-amber-50 px-3 py-3 text-center">
+              <div className="flex items-center justify-center gap-1 text-amber-500">
+                <Info size={15} />
+                <span className="text-[20px] font-semibold">{riskCounts.medium}</span>
+              </div>
+              <p className="mt-1 text-[12px] text-slate-500">보통</p>
+            </div>
+
+            <div className="rounded-[16px] bg-emerald-50 px-3 py-3 text-center">
+              <div className="flex items-center justify-center gap-1 text-emerald-500">
+                <CheckCircle size={15} />
+                <span className="text-[20px] font-semibold">{riskCounts.low}</span>
+              </div>
+              <p className="mt-1 text-[12px] text-slate-500">낮음</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const AiSummaryCard = () => (
+    <div className="rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] text-white"
+          style={{
+            background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+          }}
+        >
+          <FileText size={17} />
+        </div>
+
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-semibold text-slate-900">AI 요약</h3>
+          <p className="mt-2 line-clamp-4 text-[14px] leading-6 text-slate-600">
+            {analysis.summaryText}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const SectionHeader = ({
+    icon,
+    title,
+    count,
+    isOpen,
+    onToggle,
+  }: {
+    icon: ReactNode;
+    title: string;
+    count?: number;
+    isOpen?: boolean;
+    onToggle?: () => void;
+  }) => {
+    const content = (
+      <>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[#F8FAFF] text-[#6C80DD]">
+            {icon}
+          </span>
+          <h3 className="truncate text-[15px] font-semibold text-slate-900">{title}</h3>
+          {count !== undefined && (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+              {count}
+            </span>
+          )}
+        </div>
+        {onToggle && (isOpen ? <ChevronUp size={17} /> : <ChevronDown size={17} />)}
+      </>
+    );
+
+    if (onToggle) {
+      return (
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex w-full items-center justify-between gap-3 text-left"
+        >
+          {content}
+        </button>
+      );
+    }
+
+    return <div className="flex items-center justify-between gap-3">{content}</div>;
+  };
+
+  const SuggestedQuestionList = () => (
+    <div className="space-y-2">
+      {suggestedQuestions.map((question, index) => (
+        <button
+          key={index}
+          type="button"
+          onClick={() => handleQuestionClick(question)}
+          disabled={isSending}
+          className="w-full rounded-[16px] border border-slate-100 bg-[#F8FAFF] px-4 py-3 text-left text-[14px] font-medium text-slate-700 transition-all hover:border-[#DCE4FF] hover:bg-white disabled:opacity-60"
+        >
+          {question}
+        </button>
+      ))}
+    </div>
+  );
+
+  const UserAvatar = () => {
+    const initial = userDisplayName.trim().charAt(0) || 'U';
+
+    return (
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-slate-800 text-white shadow-sm">
+        {userProfileImage ? (
+          <img
+            src={userProfileImage}
+            alt="내 프로필"
+            className="h-full w-full object-cover"
+          />
+        ) : initial ? (
+          <span className="text-[14px] font-semibold">{initial}</span>
+        ) : (
+          <UserIcon size={16} />
+        )}
+      </div>
+    );
+  };
+
+  const ChatPanel = ({ compact = false }: { compact?: boolean }) => (
+    <div className={`${compact ? '' : 'sticky top-6'} flex h-full min-h-0 flex-col bg-white/30`}>
+      <div className="border-b border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(238,242,249,0.72)_100%)] px-4 py-4">
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-11 w-11 items-center justify-center rounded-[16px] text-white shadow-lg"
+            style={{
+              background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+            }}
+          >
+            <Bot size={20} />
+          </div>
+
+          <div>
+            <h2 className="text-[15px] font-semibold text-slate-900">AI 어시스턴트</h2>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span className="text-[13px] text-slate-500">
+                {isLoading ? '불러오는 중' : isSending ? '답변 작성 중' : '분석 완료'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className={`${compact ? 'max-h-[360px]' : 'h-[590px]'} flex-1 space-y-4 overflow-y-auto p-4`}>
+        {chatMessages.length === 0 && (
+          <div className="flex gap-3">
+            <div
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
+              style={{
+                background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+              }}
+            >
+              <Bot size={16} />
+            </div>
+
+            <div className="max-w-[82%] rounded-[20px] rounded-tl-[8px] border border-white/90 bg-white px-4 py-3 text-[14px] leading-6 text-slate-800 shadow-sm">
+              계약서에 대해 궁금한 점을 물어보세요.
+            </div>
+          </div>
+        )}
+
+        {chatMessages.map((message, index) => (
+          <div
+            key={index}
+            className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
+            {message.role === 'bot' && !compact && (
+              <div
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
+                style={{
+                  background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                }}
+              >
+                <Bot size={16} />
+              </div>
+            )}
+
+            <div
+              className={`max-w-[82%] whitespace-pre-line rounded-[20px] px-4 py-3 text-[14px] leading-6 ${
+                message.role === 'bot'
+                  ? 'rounded-tl-[8px] border border-white/90 bg-white text-slate-800 shadow-sm'
+                  : 'rounded-tr-[8px] bg-[#6C80DD] text-white shadow-sm'
+              }`}
+            >
+              {message.text}
+            </div>
+
+            {message.role === 'user' && !compact && (
+              <UserAvatar />
+            )}
+          </div>
+        ))}
+
+        {isSending && (
+          <div className="flex gap-3">
+            {!compact && (
+              <div
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
+                style={{
+                  background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                }}
+              >
+                <Bot size={16} />
+              </div>
+            )}
+
+            <div className="rounded-[20px] rounded-tl-[8px] border border-white/90 bg-white px-4 py-3 text-[14px] leading-6 text-slate-500 shadow-sm">
+              답변을 작성하고 있어요...
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-slate-100 bg-white/70 p-3 sm:p-4">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSendMessage();
+            }}
+            placeholder="계약서에 대해 질문하세요..."
+            disabled={isSending}
+            className="h-[50px] min-w-0 flex-1 rounded-[18px] border border-slate-200/80 bg-white px-4 text-[14px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] disabled:opacity-60 sm:h-[52px] sm:text-[15px]"
+          />
+
+          <button
+            type="button"
+            onClick={() => handleSendMessage()}
+            disabled={isSending}
+            className="inline-flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-[18px] text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:opacity-60 sm:h-[52px] sm:w-[52px]"
+            style={{
+              background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+            }}
+          >
+            <Send size={18} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -946,7 +1393,7 @@ export function ResultDashboard() {
         </header>
 
         <main className="flex flex-1 items-center justify-center pb-10 sm:pb-12">
-          <section className="mx-auto w-full max-w-[720px] lg:max-w-[1080px]">
+          <section className="mx-auto w-full max-w-[720px] lg:max-w-[1280px]">
             <div className="mx-auto max-w-[560px] text-center">
               <div className="mb-4 inline-flex items-center justify-center rounded-full border border-white/90 bg-white/82 px-4 py-2 text-center text-[12px] font-medium text-slate-500 shadow-sm backdrop-blur sm:mb-6 sm:px-5 sm:py-2.5 sm:text-[13px]">
                 Result
@@ -970,314 +1417,63 @@ export function ResultDashboard() {
               </div>
             </div>
 
-            <div className="mx-auto mt-7 hidden overflow-hidden rounded-[28px] border border-white/90 bg-white/80 shadow-[0_30px_70px_rgba(15,23,42,0.10)] backdrop-blur lg:block sm:rounded-[32px]">
-              <div className="border-b border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(238,242,249,0.72)_100%)] px-4 py-4 sm:px-6 sm:py-5">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex h-11 w-11 items-center justify-center rounded-[16px] text-white shadow-lg sm:h-12 sm:w-12 sm:rounded-[18px]"
-                    style={{
-                      background:
-                        'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                    }}
-                  >
-                    <Bot size={20} className="sm:h-6 sm:w-6" />
+            <div className="mx-auto mt-7 hidden overflow-hidden rounded-[28px] border border-white/90 bg-white/80 shadow-[0_30px_70px_rgba(15,23,42,0.10)] backdrop-blur sm:rounded-[32px] lg:grid lg:max-w-[1280px] lg:grid-cols-[minmax(0,1fr)_420px]">
+              <div className="space-y-4 p-5 xl:p-6">
+                <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+                  <ScoreOverviewCard />
+                  <SummaryCards />
+                </div>
+
+                <AiSummaryCard />
+
+                <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+                  <div className="rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm">
+                    <SectionHeader
+                      icon={<AlertTriangle size={17} />}
+                      title="위험 조항"
+                      count={analysis.risks.length}
+                    />
+                    <div className="mt-4">
+                      <RiskCards limit={showAllRisks ? undefined : 3} />
+                    </div>
                   </div>
 
-                  <div>
-                    <h2 className="text-[15px] font-semibold text-slate-900 sm:text-[16px]">
-                      AI 어시스턴트
-                    </h2>
-                    <div className="mt-1 flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                      <span className="text-[13px] text-slate-500">
-                        {isLoading ? '불러오는 중' : isSending ? '답변 작성 중' : '분석 완료'}
-                      </span>
+                  <div className="rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm">
+                    <SectionHeader
+                      icon={<Scale size={17} />}
+                      title="법령 준수 검사"
+                      count={analysis.compliance.length}
+                      isOpen={showCompliance}
+                      onToggle={() => setShowCompliance((prev) => !prev)}
+                    />
+                    <div className="mt-4">
+                      <ComplianceCards limit={showCompliance ? undefined : 3} />
                     </div>
                   </div>
                 </div>
+
+                <div className="rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm">
+                  <SectionHeader
+                    icon={<Bot size={17} />}
+                    title="추천 질문"
+                    count={suggestedQuestions.length}
+                    isOpen={showQuestions}
+                    onToggle={() => setShowQuestions((prev) => !prev)}
+                  />
+                  {showQuestions && (
+                    <div className="mt-4">
+                      <SuggestedQuestionList />
+                    </div>
+                  )}
+                </div>
+
+                <p className="px-1 text-[12px] leading-5 text-slate-400">
+                  안정도 점수는 감지된 위험 요소의 개수와 위험도를 기준으로 계산된 참고용 점수입니다.
+                </p>
               </div>
 
-              <div className="grid min-h-[720px] lg:grid-cols-[1.05fr_0.95fr]">
-                <div className="p-4 sm:p-6 lg:border-r lg:border-slate-100/80">
-                  <div className="space-y-4">
-                    {dashboardMessages.map((message, index) => (
-                      <div key={index}>
-                        {message.type === 'text' && (
-                          <div className="flex justify-start gap-3">
-                            <div
-                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                              style={{
-                                background:
-                                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                              }}
-                            >
-                              <Bot size={16} />
-                            </div>
-
-                            <div className="max-w-[82%] whitespace-pre-line rounded-[20px] rounded-tl-[8px] border border-white/90 bg-white px-4 py-3 text-[14px] leading-6 text-slate-800 shadow-sm sm:max-w-[75%] sm:text-[15px]">
-                              {message.text}
-                            </div>
-                          </div>
-                        )}
-
-                        {message.type === 'summary' && (
-                          <div className="flex gap-3">
-                            <div
-                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                              style={{
-                                background:
-                                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                              }}
-                            >
-                              <Bot size={16} />
-                            </div>
-
-                            <div className="max-w-xl flex-1">
-                              <SummaryCards />
-                            </div>
-                          </div>
-                        )}
-
-                        {message.type === 'risks' && (
-                          <div className="flex gap-3">
-                            <div
-                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                              style={{
-                                background:
-                                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                              }}
-                            >
-                              <Bot size={16} />
-                            </div>
-
-                            <div className="max-w-xl flex-1 space-y-3">
-                              <div className="rounded-[20px] border border-white/90 bg-white px-4 py-3 shadow-sm">
-                                <p className="text-[15px] font-medium text-slate-900">
-                                  주요 위험 요소를 확인했어요.
-                                </p>
-                              </div>
-
-                              <RiskCards />
-                            </div>
-                          </div>
-                        )}
-
-                        {message.type === 'compliance' && (
-                          <div className="flex gap-3">
-                            <div
-                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                              style={{ background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)' }}
-                            >
-                              <Bot size={16} />
-                            </div>
-                            <div className="max-w-xl flex-1 space-y-3">
-                              <div className="rounded-[20px] border border-white/90 bg-white px-4 py-3 shadow-sm">
-                                <p className="text-[15px] font-medium text-slate-900">
-                                  법령 준수 검사 결과예요.
-                                </p>
-                              </div>
-                              <ComplianceCards />
-                            </div>
-                          </div>
-                        )}
-
-                        {message.type === 'score' && (
-                          <div className="flex gap-3">
-                            <div
-                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                              style={{
-                                background:
-                                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                              }}
-                            >
-                              <Bot size={16} />
-                            </div>
-
-                            <div className="flex-1">
-                              <div className="rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
-                                <div className="flex items-center gap-6">
-                                  <ScoreRing
-                                    score={safetyScore}
-                                    size={128}
-                                    strokeWidth={16}
-                                    numberFontSize={32}
-                                  />
-
-                                  <div className="flex-1">
-                                    <h3 className="text-[28px] font-semibold tracking-[-0.04em] text-slate-900">
-                                      계약 안정도
-                                    </h3>
-                                    <p className="mt-2 text-[15px] text-slate-500">
-                                      {scoreLabel}
-                                    </p>
-
-                                    <div className="mt-5 flex gap-5">
-                                      <div className="text-center">
-                                        <div className="flex items-center gap-1 text-red-500">
-                                          <AlertTriangle size={16} />
-                                          <span className="text-[20px] font-semibold">
-                                            {riskCounts.high}
-                                          </span>
-                                        </div>
-                                        <p className="mt-1 text-[12px] text-slate-500">높음</p>
-                                      </div>
-
-                                      <div className="text-center">
-                                        <div className="flex items-center gap-1 text-amber-500">
-                                          <Info size={16} />
-                                          <span className="text-[20px] font-semibold">
-                                            {riskCounts.medium}
-                                          </span>
-                                        </div>
-                                        <p className="mt-1 text-[12px] text-slate-500">보통</p>
-                                      </div>
-
-                                      <div className="text-center">
-                                        <div className="flex items-center gap-1 text-emerald-500">
-                                          <CheckCircle size={16} />
-                                          <span className="text-[20px] font-semibold">
-                                            {riskCounts.low}
-                                          </span>
-                                        </div>
-                                        <p className="mt-1 text-[12px] text-slate-500">낮음</p>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <p className="mt-4 text-[12px] leading-5 text-slate-400">
-                                  안정도 점수는 감지된 위험 요소의 개수와 위험도를 기준으로 계산된 참고용 점수입니다.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                    <div className="pt-2">
-                      <p className="mb-3 text-[14px] font-semibold text-slate-800">
-                        추천 질문
-                      </p>
-                      <div className="space-y-2">
-                        {suggestedQuestions.map((question, index) => (
-                          <button
-                            key={index}
-                            type="button"
-                            onClick={() => handleQuestionClick(question)}
-                            disabled={isSending}
-                            className="w-full rounded-[18px] border border-slate-100 bg-white px-4 py-3 text-left text-[14px] font-medium text-slate-700 transition-all hover:border-[#DCE4FF] hover:bg-[#F8FAFF] disabled:opacity-60 sm:text-[15px]"
-                          >
-                            {question}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="hidden min-h-[720px] flex-col bg-white/30 lg:flex">
-                  <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
-                    {chatMessages.length === 0 && (
-                      <div className="flex gap-3">
-                        <div
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                          style={{
-                            background:
-                              'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                          }}
-                        >
-                          <Bot size={16} />
-                        </div>
-                        <div className="max-w-[82%] rounded-[20px] rounded-tl-[8px] border border-white/90 bg-white px-4 py-3 text-[14px] leading-6 text-slate-800 shadow-sm sm:max-w-[75%] sm:text-[15px]">
-                          계약서에 대해 궁금한 점을 물어보세요.
-                        </div>
-                      </div>
-                    )}
-
-                    {chatMessages.map((message, index) => (
-                      <div
-                        key={index}
-                        className={`flex gap-3 ${
-                          message.role === 'user' ? 'justify-end' : 'justify-start'
-                        }`}
-                      >
-                        {message.role === 'bot' && (
-                          <div
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                            style={{
-                              background:
-                                'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                            }}
-                          >
-                            <Bot size={16} />
-                          </div>
-                        )}
-
-                        <div
-                          className={`max-w-[82%] whitespace-pre-line rounded-[20px] px-4 py-3 text-[14px] leading-6 sm:max-w-[75%] sm:text-[15px] ${
-                            message.role === 'bot'
-                              ? 'rounded-tl-[8px] border border-white/90 bg-white text-slate-800 shadow-sm'
-                              : 'rounded-tr-[8px] bg-[#6C80DD] text-white shadow-sm'
-                          }`}
-                        >
-                          {message.text}
-                        </div>
-
-                        {message.role === 'user' && (
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-slate-800 text-white">
-                            <UserIcon size={16} />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                    {isSending && (
-                      <div className="flex gap-3">
-                        <div
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-white"
-                          style={{
-                            background:
-                              'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                          }}
-                        >
-                          <Bot size={16} />
-                        </div>
-                        <div className="rounded-[20px] rounded-tl-[8px] border border-white/90 bg-white px-4 py-3 text-[14px] leading-6 text-slate-500 shadow-sm">
-                          답변을 작성하고 있어요...
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="border-t border-slate-100 bg-white/70 p-3 sm:p-4">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={inputMessage}
-                        onChange={(e) => setInputMessage(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSendMessage();
-                        }}
-                        placeholder="계약서에 대해 질문하세요..."
-                        disabled={isSending}
-                        className="h-[50px] flex-1 rounded-[18px] border border-slate-200/80 bg-white px-4 text-[14px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] disabled:opacity-60 sm:h-[52px] sm:text-[15px]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleSendMessage()}
-                        disabled={isSending}
-                        className="inline-flex h-[50px] w-[50px] items-center justify-center rounded-[18px] text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:opacity-60 sm:h-[52px] sm:w-[52px]"
-                        style={{
-                          background:
-                            'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                        }}
-                      >
-                        <Send size={18} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+              <div className="border-l border-slate-100/80">
+                <ChatPanel />
               </div>
             </div>
 
@@ -1288,8 +1484,7 @@ export function ResultDashboard() {
                     <div
                       className="flex h-11 w-11 items-center justify-center rounded-[16px] text-white shadow-lg sm:h-12 sm:w-12 sm:rounded-[18px]"
                       style={{
-                        background:
-                          'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                        background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
                       }}
                     >
                       <Bot size={20} className="sm:h-6 sm:w-6" />
@@ -1309,52 +1504,15 @@ export function ResultDashboard() {
                   </div>
                 </div>
 
-                <div className="p-4 sm:p-6">
-                  <div className="rounded-[24px] border border-slate-100 bg-[#F8FAFF] p-5">
-                    <div className="flex flex-col items-center text-center">
-                      <ScoreRing score={safetyScore} />
-
-                      <h3 className="mt-4 text-[22px] font-semibold tracking-[-0.04em] text-slate-900">
-                        계약 안정도
-                      </h3>
-                      <p className="mt-1 text-[14px] text-slate-500">{scoreLabel}</p>
-
-                      <div className="mt-5 grid w-full grid-cols-3 gap-3">
-                        <div className="rounded-[18px] bg-white p-3">
-                          <div className="flex items-center justify-center gap-1 text-red-500">
-                            <AlertTriangle size={15} />
-                            <span className="text-[18px] font-semibold">{riskCounts.high}</span>
-                          </div>
-                          <p className="mt-1 text-[12px] text-slate-500">높음</p>
-                        </div>
-
-                        <div className="rounded-[18px] bg-white p-3">
-                          <div className="flex items-center justify-center gap-1 text-amber-500">
-                            <Info size={15} />
-                            <span className="text-[18px] font-semibold">{riskCounts.medium}</span>
-                          </div>
-                          <p className="mt-1 text-[12px] text-slate-500">보통</p>
-                        </div>
-
-                        <div className="rounded-[18px] bg-white p-3">
-                          <div className="flex items-center justify-center gap-1 text-emerald-500">
-                            <CheckCircle size={15} />
-                            <span className="text-[18px] font-semibold">{riskCounts.low}</span>
-                          </div>
-                          <p className="mt-1 text-[12px] text-slate-500">낮음</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <SummaryCards />
-                  </div>
+                <div className="space-y-4 p-4 sm:p-6">
+                  <ScoreOverviewCard />
+                  <SummaryCards />
+                  <AiSummaryCard />
 
                   <button
                     type="button"
                     onClick={handleOpenShareModal}
-                    className="mt-4 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-[18px] border border-white/90 bg-white text-[14px] font-semibold text-slate-600 shadow-sm transition-all hover:-translate-y-0.5"
+                    className="inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-[18px] border border-white/90 bg-white text-[14px] font-semibold text-slate-600 shadow-sm transition-all hover:-translate-y-0.5"
                   >
                     <Share2 size={16} />
                     공유 링크 만들기
@@ -1364,10 +1522,9 @@ export function ResultDashboard() {
                     <button
                       type="button"
                       onClick={() => setShowMobileDetail(true)}
-                      className="mt-4 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-[18px] text-[14px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5"
+                      className="inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-[18px] text-[14px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5"
                       style={{
-                        background:
-                          'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                        background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
                       }}
                     >
                       상세 분석 보기
@@ -1378,114 +1535,47 @@ export function ResultDashboard() {
                   {showMobileDetail && (
                     <div className="mt-4 space-y-4">
                       <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
-                        <div className="flex items-center gap-2">
-                          <FileText size={16} className="text-[#6C80DD]" />
-                          <h3 className="text-[15px] font-semibold text-slate-900">
-                            주요 확인 포인트
-                          </h3>
-                        </div>
-
-                        <div className="mt-4 rounded-[18px] bg-[#F8FAFF] p-4">
-                          <p className="text-[14px] font-medium leading-6 text-slate-900">
-                            {analysis.summaryText}
-                          </p>
-                        </div>
-
+                        <SectionHeader
+                          icon={<AlertTriangle size={17} />}
+                          title="위험 조항"
+                          count={analysis.risks.length}
+                        />
                         <div className="mt-4">
-                          <RiskCards />
-                        </div>
-
-                        <div className="mt-4 border-t border-slate-100 pt-4">
-                          <div className="flex items-center gap-2 mb-3">
-                            <Scale size={16} className="text-[#6C80DD]" />
-                            <h3 className="text-[15px] font-semibold text-slate-900">법령 준수 검사</h3>
-                          </div>
-                          <ComplianceCards />
+                          <RiskCards limit={showAllRisks ? undefined : 3} />
                         </div>
                       </div>
 
                       <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => setShowQuestions((prev) => !prev)}
-                          className="flex w-full items-center justify-between"
-                        >
-                          <span className="text-[15px] font-semibold text-slate-900">
-                            추천 질문
-                          </span>
-                          {showQuestions ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
+                        <SectionHeader
+                          icon={<Scale size={17} />}
+                          title="법령 준수 검사"
+                          count={analysis.compliance.length}
+                          isOpen={showCompliance}
+                          onToggle={() => setShowCompliance((prev) => !prev)}
+                        />
+                        <div className="mt-4">
+                          <ComplianceCards limit={showCompliance ? undefined : 3} />
+                        </div>
+                      </div>
+
+                      <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+                        <SectionHeader
+                          icon={<Bot size={17} />}
+                          title="추천 질문"
+                          count={suggestedQuestions.length}
+                          isOpen={showQuestions}
+                          onToggle={() => setShowQuestions((prev) => !prev)}
+                        />
 
                         {showQuestions && (
-                          <div className="mt-4 space-y-2">
-                            {suggestedQuestions.map((question, index) => (
-                              <button
-                                key={index}
-                                type="button"
-                                onClick={() => handleQuestionClick(question)}
-                                disabled={isSending}
-                                className="w-full rounded-[18px] border border-slate-100 bg-[#F8FAFF] px-4 py-3 text-left text-[14px] font-medium text-slate-700 transition-all hover:border-[#DCE4FF] hover:bg-white disabled:opacity-60"
-                              >
-                                {question}
-                              </button>
-                            ))}
+                          <div className="mt-4">
+                            <SuggestedQuestionList />
                           </div>
                         )}
                       </div>
 
-                      <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={inputMessage}
-                            onChange={(e) => setInputMessage(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSendMessage();
-                            }}
-                            placeholder="질문하기"
-                            disabled={isSending}
-                            className="h-[48px] flex-1 rounded-[18px] border border-slate-200/80 bg-white px-4 text-[14px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] disabled:opacity-60"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleSendMessage()}
-                            disabled={isSending}
-                            className="inline-flex h-[48px] w-[48px] items-center justify-center rounded-[18px] text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:opacity-60"
-                            style={{
-                              background:
-                                'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
-                            }}
-                          >
-                            <Send size={18} />
-                          </button>
-                        </div>
-
-                        <div className="mt-4 space-y-3">
-                          {chatMessages.map((message, index) => (
-                            <div
-                              key={index}
-                              className={`flex gap-2 ${
-                                message.role === 'user' ? 'justify-end' : 'justify-start'
-                              }`}
-                            >
-                              <div
-                                className={`max-w-[82%] whitespace-pre-line rounded-[18px] px-4 py-3 text-[13px] leading-6 ${
-                                  message.role === 'bot'
-                                    ? 'bg-[#F8FAFF] text-slate-800'
-                                    : 'bg-[#6C80DD] text-white'
-                                }`}
-                              >
-                                {message.text}
-                              </div>
-                            </div>
-                          ))}
-
-                          {isSending && (
-                            <div className="rounded-[18px] bg-[#F8FAFF] px-4 py-3 text-[13px] text-slate-500">
-                              답변을 작성하고 있어요...
-                            </div>
-                          )}
-                        </div>
+                      <div className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-sm">
+                        <ChatPanel compact />
                       </div>
 
                       <button
