@@ -27,8 +27,43 @@ body {
     radial-gradient(circle at top left, rgba(95, 117, 177, 0.14) 0%, rgba(95, 117, 177, 0.03) 28%, transparent 50%),
     linear-gradient(180deg, #EEF2F9 0%, #FFFFFF 100%);
   color: var(--color-text-primary);
+  word-break: keep-all;
+  overflow-wrap: break-word;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+p,
+li,
+dt,
+dd,
+label,
+figcaption,
+blockquote {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+input,
+textarea,
+code,
+pre,
+kbd,
+samp {
+  word-break: normal;
+  overflow-wrap: anywhere;
 }
 
 button,

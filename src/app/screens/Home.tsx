@@ -10,6 +10,41 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
+const getContractSafetyScore = (contract: any): number | null => {
+  const apiScore =
+    contract.safety_score ??
+    contract.analysis?.safety_score ??
+    contract.analysis_result?.safety_score ??
+    contract.result?.safety_score;
+
+  const score = Number(apiScore);
+
+  return Number.isFinite(score) ? score : null;
+};
+
+const isCompletedContract = (contract: any) => {
+  const status = String(
+    contract.analysis_status ??
+      contract.status ??
+      contract.analysis?.status ??
+      contract.analysis_result?.status ??
+      ''
+  ).toLowerCase();
+
+  return (
+    status.includes('completed') ||
+    status.includes('complete') ||
+    status.includes('done') ||
+    status.includes('success') ||
+    status.includes('analyzed') ||
+    status.includes('finished') ||
+    status.includes('분석 완료') ||
+    Boolean(contract.analysis) ||
+    Boolean(contract.analysis_result) ||
+    Boolean(contract.analysis_completed_at)
+  );
+};
+
 export function Home() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -65,7 +100,26 @@ export function Home() {
           new Date(a.created_at || 0).getTime()
       );
 
-      setContracts(parsedContracts);
+      const contractsWithScores = await Promise.all(
+        parsedContracts.map(async (contract) => {
+          if (!contract?.id || !isCompletedContract(contract) || getContractSafetyScore(contract) !== null) {
+            return contract;
+          }
+
+          try {
+            const detailRes = await client.get(`/api/v1/contracts/${contract.id}`);
+            return {
+              ...contract,
+              ...detailRes.data,
+            };
+          } catch (error) {
+            console.error('계약서 상세 점수 로드 실패:', contract.id, error);
+            return contract;
+          }
+        })
+      );
+
+      setContracts(contractsWithScores);
     } catch (error: any) {
       console.error('계약서 목록 로드 실패:', error);
       setContracts([]);
@@ -78,41 +132,6 @@ export function Home() {
     fetchData();
     fetchUnreadCount();
   }, [fetchData, location.pathname]);
-
-  const getContractSafetyScore = (contract: any): number | null => {
-    const apiScore =
-      contract.safety_score ??
-      contract.analysis?.safety_score ??
-      contract.analysis_result?.safety_score ??
-      contract.result?.safety_score;
-
-    const score = Number(apiScore);
-
-    return Number.isFinite(score) ? score : null;
-  };
-
-  const isCompletedContract = (contract: any) => {
-    const status = String(
-      contract.analysis_status ??
-        contract.status ??
-        contract.analysis?.status ??
-        contract.analysis_result?.status ??
-        ''
-    ).toLowerCase();
-
-    return (
-      status.includes('completed') ||
-      status.includes('complete') ||
-      status.includes('done') ||
-      status.includes('success') ||
-      status.includes('analyzed') ||
-      status.includes('finished') ||
-      status.includes('분석 완료') ||
-      Boolean(contract.analysis) ||
-      Boolean(contract.analysis_result) ||
-      Boolean(contract.analysis_completed_at)
-    );
-  };
 
   const visibleContracts = showAllContracts
     ? contracts
@@ -311,12 +330,12 @@ export function Home() {
                             <div className="mt-3 flex items-center gap-2">
                               <span
                                 className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                                  doc.status === 'COMPLETED'
+                                  isCompletedContract(doc)
                                     ? 'bg-emerald-50 text-emerald-600'
                                     : 'bg-blue-50 text-blue-600'
                                 }`}
                               >
-                                {doc.status === 'COMPLETED'
+                                {isCompletedContract(doc)
                                   ? '분석 완료'
                                   : '분석 중'}
                               </span>

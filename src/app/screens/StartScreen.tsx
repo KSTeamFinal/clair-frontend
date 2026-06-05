@@ -26,7 +26,7 @@ export function StartScreen() {
           <button
             type="button"
             onClick={() => navigate('/login')}
-            className="text-[14px] font-medium text-slate-500 transition-colors hover:text-slate-800 sm:text-[15px]"
+            className="inline-flex h-10 min-w-[88px] items-center justify-center rounded-[14px] border border-slate-200/80 bg-white/90 px-4 text-[14px] font-semibold text-slate-700 shadow-sm backdrop-blur transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 sm:h-11 sm:min-w-[96px] sm:text-[15px]"
           >
             로그인
           </button>
@@ -48,8 +48,9 @@ export function StartScreen() {
               </h1>
 
               <p className="mt-4 max-w-[530px] text-[15px] leading-7 text-slate-500 sm:mt-5 sm:text-[16px] sm:leading-8 md:text-[17px] lg:mt-8 lg:text-[19px] lg:leading-9">
-                복잡한 계약서를 빠르게 분석하고, 놓치기 쉬운 위험 조항을
-                한눈에 확인할 수 있도록 도와줍니다.
+                복잡한 계약서를 빠르게 분석하고,
+                <br />
+                놓치기 쉬운 위험 조항을 한눈에 확인할 수 있도록 도와줍니다.
               </p>
 
               <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:items-center sm:gap-4 lg:mt-12">
@@ -69,7 +70,7 @@ export function StartScreen() {
                 <button
                   type="button"
                   onClick={() => navigate('/login')}
-                  className="inline-flex h-[46px] w-full items-center justify-center rounded-[14px] bg-transparent px-6 text-[15px] font-medium text-slate-600 transition-colors hover:text-slate-900 sm:h-[56px] sm:w-auto sm:min-w-[120px] sm:text-[16px] lg:h-[68px] lg:min-w-[148px] lg:rounded-[24px] lg:px-8 lg:text-[18px]"
+                  className="inline-flex h-[50px] w-full items-center justify-center rounded-[16px] border border-slate-200/80 bg-white/92 px-6 text-[15px] font-semibold text-slate-700 shadow-sm backdrop-blur transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 sm:h-[56px] sm:w-auto sm:min-w-[132px] sm:text-[16px] lg:h-[68px] lg:min-w-[158px] lg:rounded-[24px] lg:px-8 lg:text-[18px]"
                 >
                   로그인
                 </button>
@@ -77,7 +78,7 @@ export function StartScreen() {
 
               {/* Mobile / Tablet feature cards */}
               <div className="mt-7 grid grid-cols-3 gap-2 sm:mt-10 sm:gap-3 lg:mt-14 lg:gap-4">
-                <div className="rounded-[18px] border border-slate-200/70 bg-white/88 p-3 shadow-sm backdrop-blur sm:rounded-[20px] sm:p-4 lg:rounded-[24px] lg:p-6">
+                <div className="rounded-[18px] border border-slate-200/70 bg-white/88 p-3 text-center shadow-sm backdrop-blur sm:rounded-[20px] sm:p-4 lg:rounded-[24px] lg:p-6">
                   <p className="text-[20px] font-semibold leading-none text-slate-900 sm:text-[24px] lg:text-[34px]">
                     Fast
                   </p>
@@ -86,7 +87,7 @@ export function StartScreen() {
                   </p>
                 </div>
 
-                <div className="rounded-[18px] border border-slate-200/70 bg-white/88 p-3 shadow-sm backdrop-blur sm:rounded-[20px] sm:p-4 lg:rounded-[24px] lg:p-6">
+                <div className="rounded-[18px] border border-slate-200/70 bg-white/88 p-3 text-center shadow-sm backdrop-blur sm:rounded-[20px] sm:p-4 lg:rounded-[24px] lg:p-6">
                   <p className="text-[20px] font-semibold leading-none text-slate-900 sm:text-[24px] lg:text-[34px]">
                     Clear
                   </p>
@@ -95,7 +96,7 @@ export function StartScreen() {
                   </p>
                 </div>
 
-                <div className="rounded-[18px] border border-slate-200/70 bg-white/88 p-3 shadow-sm backdrop-blur sm:rounded-[20px] sm:p-4 lg:rounded-[24px] lg:p-6">
+                <div className="rounded-[18px] border border-slate-200/70 bg-white/88 p-3 text-center shadow-sm backdrop-blur sm:rounded-[20px] sm:p-4 lg:rounded-[24px] lg:p-6">
                   <p className="text-[20px] font-semibold leading-none text-slate-900 sm:text-[24px] lg:text-[34px]">
                     Safe
                   </p>
@@ -137,7 +138,9 @@ export function StartScreen() {
                         서비스 중단 기준 불명확
                       </p>
                       <p className="mt-1 text-[12px] leading-5 text-slate-500">
-                        서비스 중단 관련 조항이 모호하여 해석 차이가 생길 수 있습니다.
+                        서비스 중단 관련 조항이 모호하여
+                        <br />
+                        해석 차이가 생길 수 있습니다.
                       </p>
                     </div>
 
@@ -146,7 +149,9 @@ export function StartScreen() {
                         손해 배상 범위 제한
                       </p>
                       <p className="mt-1 text-[12px] leading-5 text-slate-500">
-                        책임 범위가 과도하게 제한되어 사용자에게 불리할 수 있습니다.
+                        책임 범위가 과도하게 제한되어
+                        <br />
+                        사용자에게 불리할 수 있습니다.
                       </p>
                     </div>
                   </div>
@@ -224,9 +229,9 @@ export function StartScreen() {
                               손해 배상 범위 제한
                             </p>
                             <p className="mt-1 text-[13px] leading-6 text-slate-500">
-                              책임 범위가 과도하게 제한되어 사
+                              책임 범위가 과도하게 제한되어
                               <br />
-                              용자에게 불리할 수 있습니다.
+                              사용자에게 불리할 수 있습니다.
                             </p>
                           </div>
                         </div>
@@ -242,9 +247,9 @@ export function StartScreen() {
                               계약 해지 조항 확인 필요
                             </p>
                             <p className="mt-1 text-[13px] leading-6 text-slate-500">
-                              해지 시점과 절차가 구체적이지 않
+                              해지 시점과 절차가 구체적이지 않아
                               <br />
-                              아 분쟁 가능성이 있습니다.
+                              분쟁 가능성이 있습니다.
                             </p>
                           </div>
                         </div>
@@ -288,8 +293,10 @@ export function StartScreen() {
                 </div>
               </div>
 
-              <p className="mt-5 text-center text-[13px] leading-6 text-slate-400 lg:text-left">
-                복잡한 계약서도 더 빠르고 안전하게 검토할 수 있도록 설계된 스마트 계약 분석 서비스
+              <p className="mx-auto mt-5 max-w-[560px] text-center text-[13px] leading-6 text-slate-400">
+                복잡한 계약서도 더 빠르고 안전하게 검토할 수 있도록
+                <br />
+                설계된 스마트 계약 분석 서비스
               </p>
             </div>
           </section>
