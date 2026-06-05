@@ -79,61 +79,16 @@ export function Home() {
     fetchUnreadCount();
   }, [fetchData, location.pathname]);
 
-  const normalizeRiskLevel = (value: unknown) => {
-    const level = String(value ?? '').toLowerCase();
-
-    if (
-      level.includes('high') ||
-      level.includes('높') ||
-      level.includes('위험') ||
-      level.includes('danger')
-    ) {
-      return 'high';
-    }
-
-    if (
-      level.includes('medium') ||
-      level.includes('보통') ||
-      level.includes('중') ||
-      level.includes('주의')
-    ) {
-      return 'medium';
-    }
-
-    return 'low';
-  };
-
-  const getContractSafetyScore = (contract: any) => {
+  const getContractSafetyScore = (contract: any): number | null => {
     const apiScore =
       contract.safety_score ??
       contract.analysis?.safety_score ??
       contract.analysis_result?.safety_score ??
       contract.result?.safety_score;
 
-    if (apiScore !== undefined && apiScore !== null) {
-      return Number(apiScore);
-    }
+    const score = Number(apiScore);
 
-    const risks = Array.isArray(contract?.risk_clauses)
-      ? contract.risk_clauses
-      : [];
-
-    const highCount = risks.filter(
-      (risk: any) => normalizeRiskLevel(risk?.risk_level) === 'high'
-    ).length;
-
-    const mediumCount = risks.filter(
-      (risk: any) => normalizeRiskLevel(risk?.risk_level) === 'medium'
-    ).length;
-
-    const lowCount = risks.filter(
-      (risk: any) => normalizeRiskLevel(risk?.risk_level) === 'low'
-    ).length;
-
-    return Math.max(
-      0,
-      Math.min(100, 100 - highCount * 15 - mediumCount * 8 - lowCount * 2)
-    );
+    return Number.isFinite(score) ? score : null;
   };
 
   const isCompletedContract = (contract: any) => {
@@ -167,6 +122,7 @@ export function Home() {
 
   const completedScores = completedContracts
     .map(getContractSafetyScore)
+    .filter((score): score is number => score !== null);
     .filter((score) => Number.isFinite(score));
 
   const averageSafetyScore =
@@ -175,7 +131,7 @@ export function Home() {
           completedScores.reduce((acc, score) => acc + score, 0) /
             completedScores.length
         )
-      : 0;
+      : null;
 
   // 계약서 1건당 직접 검토 시간 약 2시간 절약 기준
   const savedHours = completedContracts.length * 2;
@@ -194,8 +150,8 @@ export function Home() {
     {
       id: 2,
       label: '계약 안정도',
-      value: `${averageSafetyScore}%`,
-      description: '최근 분석 문서 평균',
+      value: averageSafetyScore !== null ? `${averageSafetyScore}%` : '-',
+      description: '안전점수 평균',
       descriptionClass: 'text-slate-500',
       icon: <ShieldCheck size={20} className="text-sky-600" />,
       iconBg: 'bg-sky-50',
