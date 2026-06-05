@@ -27,6 +27,7 @@ export function SignUp() {
   const [isSignUpSuccessOpen, setIsSignUpSuccessOpen] = useState(false);
   const [isSignUpErrorOpen, setIsSignUpErrorOpen] = useState(false);
   const [isTermsRequiredOpen, setIsTermsRequiredOpen] = useState(false);
+  const [socialProviderName, setSocialProviderName] = useState('');
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -52,9 +53,14 @@ export function SignUp() {
     navigate('/login');
   };
 
-  const API_URL = (import.meta as any).env.VITE_API_URL || 'http://127.0.0.1:8000';
   const handleSocialLogin = (provider: 'google' | 'naver' | 'kakao') => {
-    window.location.href = `${API_URL}/api/v1/auth/${provider}`;
+    const providerNames = {
+      google: 'Google',
+      naver: 'Naver',
+      kakao: 'KakaoTalk',
+    };
+
+    setSocialProviderName(providerNames[provider]);
   };
 
   const handleLogin = () => {
@@ -615,6 +621,48 @@ export function SignUp() {
             <button
               type="button"
               onClick={() => setIsTermsRequiredOpen(false)}
+              className="mt-6 h-12 w-full rounded-[16px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5"
+              style={{
+                background:
+                  'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
+                boxShadow: '0 14px 30px rgba(102,122,242,0.24)',
+              }}
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
+
+      {socialProviderName && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 px-5 backdrop-blur-sm">
+          <div className="w-full max-w-[380px] rounded-[28px] border border-white/90 bg-white/95 px-6 py-7 text-center shadow-[0_24px_70px_rgba(95,117,177,0.24)]">
+            <button
+              type="button"
+              onClick={() => setSocialProviderName('')}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              aria-label="닫기"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="mx-auto mt-1 flex h-13 w-13 items-center justify-center rounded-full bg-[#EEF3FF] text-[24px] font-bold text-[#667AF2]">
+              !
+            </div>
+
+            <h2 className="mt-5 text-[21px] font-bold tracking-[-0.03em] text-slate-900">
+              소셜 가입을 준비 중이에요
+            </h2>
+
+            <p className="mt-2 text-[14px] leading-6 text-slate-500">
+              {socialProviderName} 계정 연동 설정이 아직 완료되지 않았어요.
+              <br />
+              지금은 이메일 회원가입을 이용해주세요.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setSocialProviderName('')}
               className="mt-6 h-12 w-full rounded-[16px] text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5"
               style={{
                 background:
