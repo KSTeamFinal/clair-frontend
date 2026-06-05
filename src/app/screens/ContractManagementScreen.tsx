@@ -30,6 +30,7 @@ type Contract = {
   category: string;
   uploadedAt: string;
   updatedAt: string;
+  sortTime: number;
   status: ContractStatus;
   fileName: string;
   size: string;
@@ -40,6 +41,15 @@ type Contract = {
 type RawContract = {
   id?: number;
   contract_id?: number;
+  contractId?: number;
+  contract?: RawContract;
+  data?: RawContract;
+  analysis?: {
+    summary?: string;
+    status?: string;
+    safety_score?: number;
+    created_at?: string;
+  };
   title?: string;
   name?: string;
   file_name?: string;
@@ -248,6 +258,13 @@ export default function ContractManagementScreen() {
     return `${Math.max(1, Math.round(size / 1024))}KB`;
   };
 
+  const getTimeValue = (value?: string) => {
+    if (!value) return 0;
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+  };
+
   const isImageFile = (file: File) => {
     const name = file.name.toLowerCase();
 
@@ -317,26 +334,34 @@ export default function ContractManagementScreen() {
     return '업로드 완료';
   };
 
-  const normalizeContract = (raw: RawContract): Contract => {
-    const id = raw.id ?? raw.contract_id ?? 0;
+  const normalizeContract = (raw: RawContract, fallbackId = 0): Contract => {
+    const source = raw.contract ?? raw.data?.contract ?? raw.data ?? raw;
+    const analysisSource = raw.analysis ?? source.analysis ?? raw.data?.analysis;
+    const id = source.id ?? source.contract_id ?? source.contractId ?? fallbackId;
+    const sortSource = source.updated_at ?? source.uploaded_at ?? source.created_at;
     const fileName =
-      raw.file_name ??
-      raw.filename ??
-      raw.original_filename ??
-      raw.name ??
+      source.file_name ??
+      source.filename ??
+      source.original_filename ??
+      source.name ??
       `contract_${id}.pdf`;
 
     return {
       id,
-      title: raw.title ?? raw.name ?? fileName.replace(/\.[^/.]+$/, ''),
-      category: raw.category ?? raw.contract_type ?? '기타계약',
-      uploadedAt: formatDate(raw.uploaded_at ?? raw.created_at),
-      updatedAt: raw.updated_at ? formatDate(raw.updated_at) : '-',
-      status: normalizeStatus(raw.analysis_status ?? raw.status),
+      title: source.title ?? source.name ?? fileName.replace(/\.[^/.]+$/, ''),
+      category: source.category ?? source.contract_type ?? '기타계약',
+      uploadedAt: formatDate(source.uploaded_at ?? source.created_at),
+      updatedAt: source.updated_at ? formatDate(source.updated_at) : '-',
+      sortTime: getTimeValue(sortSource),
+      status: normalizeStatus(source.analysis_status ?? source.status ?? analysisSource?.status),
       fileName,
-      size: formatFileSize(raw.file_size ?? raw.size),
-      summary: raw.summary ?? raw.analysis_summary ?? '아직 등록된 요약 정보가 없어요.',
-      deletedAt: raw.deleted_at ? formatDate(raw.deleted_at) : undefined,
+      size: formatFileSize(source.file_size ?? source.size),
+      summary:
+        source.summary ??
+        source.analysis_summary ??
+        analysisSource?.summary ??
+        '아직 등록된 요약 정보가 없어요.',
+      deletedAt: source.deleted_at ? formatDate(source.deleted_at) : undefined,
     };
   };
 
@@ -348,19 +373,46 @@ export default function ContractManagementScreen() {
     return [];
   };
 
-  const fetchContracts = useCallback(async () => {
+  const extractUploadedContractId = (data: any): number | null => {
+    const rawId =
+      data?.id ??
+      data?.contract_id ??
+      data?.contractId ??
+      data?.contract?.id ??
+      data?.contract?.contract_id ??
+      data?.data?.id ??
+      data?.data?.contract_id;
+
+    const id = Number(rawId);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  };
+
+  const fetchContracts = useCallback(
+    async (preferredContractId?: number | null, preserveSelection = true) => {
     try {
       setLoading(true);
 
       const response = await client.get('/api/v1/contracts/');
-      const list = extractContractArray(response.data).map(normalizeContract);
+      const list = extractContractArray(response.data)
+        .map(normalizeContract)
+        .sort((a, b) => b.sortTime - a.sortTime || b.id - a.id);
 
       const activeList = list.filter((contract) => contract.status !== '삭제됨');
 
       setContracts(activeList);
 
       setSelectedContractId((prev) => {
-        if (prev && activeList.some((contract) => contract.id === prev)) return prev;
+        if (
+          preferredContractId &&
+          activeList.some((contract) => contract.id === preferredContractId)
+        ) {
+          return preferredContractId;
+        }
+
+        if (preserveSelection && prev && activeList.some((contract) => contract.id === prev)) {
+          return prev;
+        }
+
         return activeList[0]?.id ?? null;
       });
     } catch {
@@ -374,11 +426,11 @@ export default function ContractManagementScreen() {
   const fetchContractDetail = useCallback(async (contractId: number) => {
     try {
       const response = await client.get(`/api/v1/contracts/${contractId}`);
-      const detail = normalizeContract(response.data);
+      const detail = normalizeContract(response.data, contractId);
 
       setContracts((prev) =>
         prev.map((contract) =>
-          contract.id === contractId ? { ...contract, ...detail } : contract
+          contract.id === contractId ? { ...contract, ...detail, id: contractId } : contract
         )
       );
     } catch {
@@ -470,16 +522,19 @@ export default function ContractManagementScreen() {
 
       const imageFiles = selectedFiles.filter(isImageFile);
       const documentFiles = selectedFiles.filter((file) => !isImageFile(file));
+      let uploadedContractId: number | null = null;
 
       for (const file of documentFiles) {
         const formData = new FormData();
         formData.append('file', file);
 
-        await client.post('/api/v1/contracts/upload', formData, {
+        const response = await client.post('/api/v1/contracts/upload', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
         });
+
+        uploadedContractId = extractUploadedContractId(response.data) ?? uploadedContractId;
       }
 
       if (imageFiles.length > 0) {
@@ -489,14 +544,18 @@ export default function ContractManagementScreen() {
           imageFormData.append('files', file);
         });
 
-        await client.post('/api/v1/contracts/upload-images', imageFormData, {
+        const response = await client.post('/api/v1/contracts/upload-images', imageFormData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
         });
+
+        uploadedContractId = extractUploadedContractId(response.data) ?? uploadedContractId;
       }
 
-      await fetchContracts();
+      setSearch('');
+
+      await fetchContracts(uploadedContractId, false);
 
       setSelectedFiles([]);
       setUploadOpen(true);
@@ -716,9 +775,9 @@ export default function ContractManagementScreen() {
                     </button>
                   </div>
 
-                  <div className="mt-3 border-t border-[#E8EEFF] pt-3">
+                  <div className="mt-4 border-t border-[#E8EEFF] pt-4">
                     {selectedContract && (
-                      <p className="mb-2 truncate text-[11px] text-slate-400">
+                      <p className="mb-3 truncate text-[11px] text-slate-400 sm:text-[12px]">
                         선택된 계약서: <span className="font-medium text-slate-600">{selectedContract.title}</span>
                       </p>
                     )}
@@ -726,13 +785,13 @@ export default function ContractManagementScreen() {
                       type="button"
                       onClick={handleAnalyze}
                       disabled={analyzing || !selectedContract}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[13px] font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+                      className="inline-flex min-h-[54px] w-full items-center justify-center gap-2.5 rounded-[16px] px-5 py-4 text-[15px] font-bold text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 sm:min-h-[58px] sm:text-[16px]"
                       style={{
                         backgroundColor: analyzing ? '#AAB6E8' : '#6C80DD',
-                        boxShadow: selectedContract ? '0 8px 20px rgba(108, 128, 221, 0.28)' : 'none',
+                        boxShadow: selectedContract ? '0 14px 30px rgba(108, 128, 221, 0.30)' : 'none',
                       }}
                     >
-                      <BarChart3 className="h-4 w-4" />
+                      <BarChart3 className="h-5 w-5" />
                       {analyzing ? '분석 요청 중...' : 'AI 분석 시작'}
                     </button>
                   </div>

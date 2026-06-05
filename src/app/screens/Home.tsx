@@ -136,21 +136,44 @@ export function Home() {
     );
   };
 
+  const isCompletedContract = (contract: any) => {
+    const status = String(
+      contract.analysis_status ??
+        contract.status ??
+        contract.analysis?.status ??
+        contract.analysis_result?.status ??
+        ''
+    ).toLowerCase();
+
+    return (
+      status.includes('completed') ||
+      status.includes('complete') ||
+      status.includes('done') ||
+      status.includes('success') ||
+      status.includes('analyzed') ||
+      status.includes('finished') ||
+      status.includes('분석 완료') ||
+      Boolean(contract.analysis) ||
+      Boolean(contract.analysis_result) ||
+      Boolean(contract.analysis_completed_at)
+    );
+  };
+
   const visibleContracts = showAllContracts
     ? contracts
     : contracts.slice(0, 3);
 
-  const completedContracts = contracts.filter(
-    (contract) => contract.status === 'COMPLETED'
-  );
+  const completedContracts = contracts.filter(isCompletedContract);
+
+  const completedScores = completedContracts
+    .map(getContractSafetyScore)
+    .filter((score) => Number.isFinite(score));
 
   const averageSafetyScore =
-    completedContracts.length > 0
+    completedScores.length > 0
       ? Math.round(
-          completedContracts.reduce(
-            (acc, contract) => acc + getContractSafetyScore(contract),
-            0
-          ) / completedContracts.length
+          completedScores.reduce((acc, score) => acc + score, 0) /
+            completedScores.length
         )
       : 0;
 
@@ -162,8 +185,8 @@ export function Home() {
     {
       id: 1,
       label: '총 분석 건수',
-      value: contracts.length.toString(),
-      description: '업로드된 전체 문서',
+      value: completedContracts.length.toString(),
+      description: '분석 완료된 문서',
       descriptionClass: 'text-emerald-600',
       icon: <FileText size={20} className="text-[#6C80DD]" />,
       iconBg: 'bg-[#EEF2F9]',
@@ -179,9 +202,9 @@ export function Home() {
     },
     {
       id: 3,
-      label: 'AI로 절약한 시간',
+      label: '예상 절약 시간',
       value: `${savedHours}시간`,
-      description: '직접 검토 대비',
+      description: '분석 1건당 2시간 기준',
       descriptionClass: 'text-slate-500',
       icon: <Clock size={20} className="text-violet-600" />,
       iconBg: 'bg-violet-50',
