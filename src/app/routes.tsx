@@ -14,6 +14,7 @@ import ChatSessionScreen from './screens/ChatSessionScreen';
 import ContractManagementScreen from './screens/ContractManagementScreen';
 import { PasswordReset } from './screens/PasswordReset';
 import SharePage from './screens/SharePage';
+import { SocialCallback } from './screens/SocialCallback';
 
 export const router = createBrowserRouter([
   {
@@ -81,6 +82,10 @@ export const router = createBrowserRouter([
 {
   path: '/share/:token',
   element: <SharePage />,
+},
+{
+  path: '/social-callback',
+  element: <SocialCallback />,
 },
 
 
