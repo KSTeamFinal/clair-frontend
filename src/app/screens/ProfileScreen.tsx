@@ -35,6 +35,9 @@ export default function ProfileScreen() {
   });
 
   useEffect(() => {
+    const savedImage = localStorage.getItem('profileImage');
+    if (savedImage) setProfileImage(savedImage);
+
     const fetchUserInfo = async () => {
       try {
         const res = await client.get('/api/v1/auth/me');
@@ -46,7 +49,10 @@ export default function ProfileScreen() {
           createdAt: res.data.created_at || res.data.createdAt || '',
         });
 
-        setProfileImage(res.data.profile_image || res.data.profileImage || null);
+        const serverImage = res.data.profile_image || res.data.profileImage;
+        if (serverImage) {
+          setProfileImage(serverImage);
+        }
       } catch (error) {
         console.error('유저 정보 불러오기 실패:', error);
         const stored = localStorage.getItem('userInfo');
@@ -59,8 +65,6 @@ export default function ProfileScreen() {
             createdAt: u.created_at || u.createdAt || '',
           });
         }
-        const savedImage = localStorage.getItem('profileImage');
-        if (savedImage) setProfileImage(savedImage);
       }
     };
 
