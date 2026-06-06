@@ -124,18 +124,16 @@ export function Loading() {
 
         const status = String(rawStatus ?? '').toLowerCase();
 
+        // 완료 판정은 status 기준으로만 — analysis/risk_clauses/analysis_completed_at 같은
+        // 데이터 필드로 판단하면 재분석 시 이전 분석 데이터가 남아 있어 PROCESSING인데도
+        // "완료"로 오판하고 결과 페이지로 일찍 튕겨 빈 화면이 보이는 문제가 생긴다.
         const isCompleted =
           status === 'completed' ||
           status === 'complete' ||
           status === 'done' ||
           status === 'success' ||
           status === 'analyzed' ||
-          status === 'finished' ||
-          !!data?.analysis ||
-          !!data?.analysis_result ||
-          !!data?.analysis_completed_at ||
-          Array.isArray(data?.risk_clauses) ||
-          Array.isArray(data?.risks);
+          status === 'finished';
 
         if (isCompleted) {
           stopPolling();

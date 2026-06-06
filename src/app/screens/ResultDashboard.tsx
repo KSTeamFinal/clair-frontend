@@ -11,6 +11,7 @@ import {
   Calendar,
   DollarSign,
   Bot,
+  Loader2,
   Send,
   User as UserIcon,
   FileText,
@@ -313,6 +314,8 @@ export function ResultDashboard() {
 
   const [analysis, setAnalysis] = useState<AnalysisResult>(DEFAULT_ANALYSIS);
   const [isLoading, setIsLoading] = useState(true);
+  // 분석이 아직 진행 중(PENDING/PROCESSING)인 동안 true — 빈 대시보드 대신 로딩 화면 표시
+  const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [showQuestions, setShowQuestions] = useState(false);
   const [showAllRisks, setShowAllRisks] = useState(false);
@@ -409,25 +412,60 @@ export function ResultDashboard() {
   }, []);
 
   useEffect(() => {
+    if (!contractId) {
+      setIsLoading(false);
+      setDashboardMessages([
+        {
+          role: 'bot',
+          text: '계약서 ID를 찾을 수 없어 분석 결과를 불러오지 못했어요.',
+          type: 'text',
+        },
+      ]);
+      return;
+    }
+
+    let cancelled = false;
+
     const fetchAnalysis = async () => {
       try {
-        setIsLoading(true);
+        const response = await client.get(`/api/v1/contracts/${contractId}`);
+        if (cancelled) return;
 
-        if (!contractId) {
+        const data = response.data;
+        const status = String(data?.status ?? '').toLowerCase();
+
+        // 분석이 아직 끝나지 않았으면 결과를 렌더하지 않고 로딩 페이지로 되돌림.
+        // 대기는 업로드 직후의 로딩 화면(진행률 UI)이 전담한다 — 결과 페이지에서
+        // 폴링하며 빈 대시보드를 보여주지 않기 위함.
+        const isPending =
+          status === 'uploaded' ||
+          status === 'pending' ||
+          status === 'processing';
+
+        if (isPending) {
+          navigate(`/loading/${contractId}`, { replace: true });
+          return;
+        }
+
+        if (status === 'failed' || status === 'error') {
+          setIsAnalyzing(false);
+          setIsLoading(false);
           setDashboardMessages([
             {
               role: 'bot',
-              text: '계약서 ID를 찾을 수 없어 분석 결과를 불러오지 못했어요.',
+              text:
+                data?.analysis_error ??
+                '계약서 분석에 실패했어요. 다시 시도해주세요.',
               type: 'text',
             },
           ]);
           return;
         }
 
-        const response = await client.get(`/api/v1/contracts/${contractId}`);
-        const normalized = normalizeAnalysis(response.data);
-
+        const normalized = normalizeAnalysis(data);
         setAnalysis(normalized);
+        setIsAnalyzing(false);
+        setIsLoading(false);
 
         setDashboardMessages([
           { role: 'bot', text: '분석이 완료되었어요.', type: 'text' },
@@ -443,8 +481,10 @@ export function ResultDashboard() {
           },
         ]);
       } catch (error) {
+        if (cancelled) return;
         console.error('분석 결과 조회 실패:', error);
-
+        setIsAnalyzing(false);
+        setIsLoading(false);
         setDashboardMessages([
           {
             role: 'bot',
@@ -452,13 +492,16 @@ export function ResultDashboard() {
             type: 'text',
           },
         ]);
-      } finally {
-        setIsLoading(false);
       }
     };
 
+    setIsLoading(true);
     fetchAnalysis();
-  }, [contractId]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contractId, navigate]);
 
   useEffect(() => {
     if (!contractId || sessionId) return;
@@ -1412,6 +1455,40 @@ export function ResultDashboard() {
       </div>
     </div>
   );
+
+  // 분석이 아직 진행 중이면 빈 대시보드(0점·0개)를 깜빡이며 보여주는 대신
+  // 안정적인 "분석 중" 화면을 표시 — 완료되면 폴링이 자동으로 결과로 전환
+  if (isAnalyzing) {
+    return (
+      <div
+        className="flex min-h-screen items-center justify-center px-6"
+        style={{
+          background:
+            'radial-gradient(circle at 18% 18%, rgba(95,117,177,0.18) 0%, rgba(95,117,177,0.06) 24%, transparent 48%), linear-gradient(180deg, #EEF2F9 0%, #FFFFFF 100%)',
+        }}
+      >
+        <div className="flex flex-col items-center text-center">
+          <div
+            className="relative flex h-16 w-16 items-center justify-center rounded-[20px] text-white shadow-lg"
+            style={{ background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)' }}
+          >
+            <Bot size={28} />
+            <span className="absolute inset-0 animate-spin rounded-[20px] border-2 border-transparent border-t-white/90" />
+          </div>
+          <h1 className="mt-6 text-[22px] font-semibold tracking-[-0.03em] text-slate-900 sm:text-[26px]">
+            계약서를 분석하고 있어요
+          </h1>
+          <p className="mt-2 text-[14px] leading-6 text-slate-500 sm:text-[15px]">
+            분석이 끝나면 결과가 자동으로 표시됩니다. 잠시만 기다려주세요.
+          </p>
+          <div className="mt-6 flex items-center gap-2 text-[13px] text-[#6C80DD]">
+            <Loader2 size={16} className="animate-spin" />
+            분석 결과를 기다리는 중…
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
