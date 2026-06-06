@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, X } from 'lucide-react';
 // 점 두 개(..)가 두 번 필요합니다!
 import client from '../../api/client';
+import { redirectToSocialLogin, type SocialProvider } from '../../api/socialAuth';
 
 export function Login() {
   const navigate = useNavigate();
@@ -23,10 +24,8 @@ export function Login() {
     navigate('/');
   };
 
-  const handleSocialLogin = (provider: 'google' | 'naver' | 'kakao') => {
-    const baseURL = String(client.defaults.baseURL || '').replace(/\/$/, '');
-
-    window.location.href = `${baseURL}/api/v1/auth/${provider}`;
+  const handleSocialLogin = (provider: SocialProvider) => {
+    redirectToSocialLogin(provider);
   };
 
   const handleLogin = async () => {

@@ -54,6 +54,8 @@ type AnalysisResult = {
   analyzedDate: string;
   safetyScore: number;
   contractType: string;
+  contractStartDate: string;
+  contractEndDate: string;
   contractPeriod: string;
   contractPeriodDetail: string;
   salary: string;
@@ -73,6 +75,8 @@ const DEFAULT_ANALYSIS: AnalysisResult = {
   analyzedDate: '분석 완료',
   safetyScore: 0,
   contractType: 'unknown',
+  contractStartDate: '-',
+  contractEndDate: '-',
   contractPeriod: '-',
   contractPeriodDetail: '-',
   salary: '-',
@@ -242,6 +246,16 @@ function normalizeAnalysis(data: any): AnalysisResult {
     ),
     safetyScore:
       Number(data?.safety_score ?? data?.analysis?.safety_score ?? calculatedScore) || 0,
+    contractStartDate: getKeyInfoValue(
+      keyInfo,
+      ['start_date', 'contract_start_date', 'contractStartDate', 'period_start', '시작일', '계약시작일'],
+      '-',
+    ),
+    contractEndDate: getKeyInfoValue(
+      keyInfo,
+      ['end_date', 'contract_end_date', 'contractEndDate', 'period_end', '종료일', '계약종료일', '만료일'],
+      '-',
+    ),
     contractPeriod: getKeyInfoValue(
       keyInfo,
       [
@@ -261,26 +275,30 @@ function normalizeAnalysis(data: any): AnalysisResult {
       ['end_date', 'contract_period_detail', 'contractPeriodDetail', 'period_detail', '계약기간상세'],
       '계약서 기준',
     ),
-    salary: getKeyInfoValue(
-      keyInfo,
-      [
-        'amount_text',
-        'amount_value',
-        'salary',
-        'monthly_salary',
-        'monthlySalary',
-        'wage',
-        'pay',
-        '급여',
-        '월급',
-        '임금',
-      ],
-      '-',
+    salary: cleanMoneyText(
+      getKeyInfoValue(
+        keyInfo,
+        [
+          'amount_text',
+          'amount_value',
+          'salary',
+          'monthly_salary',
+          'monthlySalary',
+          'wage',
+          'pay',
+          '급여',
+          '월급',
+          '임금',
+        ],
+        '-',
+      ),
     ),
-    salaryDetail: getKeyInfoValue(
-      keyInfo,
-      ['amount_value', 'salary_detail', 'salaryDetail', 'wage_detail', '급여상세'],
-      '계약서 기준',
+    salaryDetail: cleanMoneyText(
+      getKeyInfoValue(
+        keyInfo,
+        ['amount_value', 'salary_detail', 'salaryDetail', 'wage_detail', '급여상세'],
+        '계약서 기준',
+      ),
     ),
     summaryText:
       data?.analysis?.summary ?? data?.summary ?? '계약서 분석 결과를 확인해보세요.',
@@ -984,6 +1002,9 @@ export function ResultDashboard() {
   const SummaryCards = () => {
     const hasWageBreakdown =
       analysis.hourlyWage || analysis.weeklyWorkHours || analysis.monthlyWage;
+    const hasStartDate = analysis.contractStartDate !== '-';
+    const hasEndDate = analysis.contractEndDate !== '-';
+    const hasSeparatedContractPeriod = hasStartDate || hasEndDate;
 
     const weeklyHolidayHours =
       analysis.weeklyWorkHours && analysis.weeklyWorkHours >= 15
@@ -1007,29 +1028,51 @@ export function ResultDashboard() {
                 <span className="block text-[13px] font-medium text-slate-500">
                   계약 기간
                 </span>
-                <div className="mt-2 break-words text-[20px] font-semibold tracking-[-0.04em] text-slate-900">
-                  {analysis.contractPeriod}
-                </div>
-                <p className="mt-1 text-[12px] leading-5 text-slate-500">
-                  {analysis.contractPeriodDetail}
+                {hasSeparatedContractPeriod ? (
+                  <div className="mt-3 space-y-2">
+                    <div className="min-w-0 rounded-[14px] bg-slate-50 px-3 py-2 text-center">
+                      <span className="block text-[11px] font-semibold text-slate-400">
+                        시작일
+                      </span>
+                      <span className="mt-1 block break-words text-[16px] font-semibold text-slate-900">
+                        {analysis.contractStartDate}
+                      </span>
+                    </div>
+
+                    <div className="min-w-0 rounded-[14px] bg-slate-50 px-3 py-2 text-center">
+                      <span className="block text-[11px] font-semibold text-slate-400">
+                        종료일
+                      </span>
+                      <span className="mt-1 block break-words text-[16px] font-semibold text-slate-900">
+                        {analysis.contractEndDate}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 break-words text-[18px] font-semibold tracking-[-0.02em] text-slate-900">
+                    {analysis.contractPeriod}
+                  </div>
+                )}
+                <p className="mt-2 text-[12px] leading-5 text-slate-500">
+                  {hasSeparatedContractPeriod ? '계약서에 명시된 시작일과 종료일이에요.' : analysis.contractPeriodDetail}
                 </p>
               </div>
             </div>
           </div>
 
           <div className="min-w-0 rounded-[20px] border border-slate-100 bg-white px-4 py-4 shadow-sm">
-            <div className="flex flex-col items-center text-center">
+            <div className="flex h-full min-h-[220px] flex-col items-center justify-center text-center">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-emerald-50 text-emerald-600">
                 <DollarSign size={17} />
               </div>
 
-              <div className="mt-3 min-w-0">
+              <div className="mt-3 w-full min-w-0 text-center">
                 <span className="block text-[13px] font-medium text-slate-500">
                   {contractAmountLabel}
                 </span>
 
-                <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-                  <span className="break-words text-center text-[20px] font-semibold tracking-[-0.04em] text-slate-900">
+                <div className="mt-2 flex w-full flex-wrap items-center justify-center gap-2 text-center">
+                  <span className="block max-w-full break-words text-center text-[20px] font-semibold tracking-[-0.04em] text-slate-900">
                     {contractAmount}
                   </span>
 
@@ -1040,7 +1083,7 @@ export function ResultDashboard() {
                   )}
                 </div>
 
-                <p className="mt-1 text-[12px] leading-5 text-slate-500">
+                <p className="mx-auto mt-1 max-w-full break-words text-center text-[12px] leading-5 text-slate-500">
                   {analysis.monthlyWageIsEstimated
                     ? '시간급 기반으로 계산한 추정 금액이에요.'
                     : analysis.salaryDetail}

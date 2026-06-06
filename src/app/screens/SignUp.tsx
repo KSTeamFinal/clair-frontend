@@ -3,6 +3,7 @@ import { useEffect, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, X, Mail, ShieldCheck } from 'lucide-react';
 import client from '../../api/client';
+import { redirectToSocialLogin, type SocialProvider } from '../../api/socialAuth';
 
 export function SignUp() {
   const navigate = useNavigate();
@@ -52,10 +53,8 @@ export function SignUp() {
     navigate('/login');
   };
 
-  const handleSocialLogin = (provider: 'google' | 'naver' | 'kakao') => {
-    const baseURL = String(client.defaults.baseURL || '').replace(/\/$/, '');
-
-    window.location.href = `${baseURL}/api/v1/auth/${provider}`;
+  const handleSocialLogin = (provider: SocialProvider) => {
+    redirectToSocialLogin(provider);
   };
 
   const handleLogin = () => {
