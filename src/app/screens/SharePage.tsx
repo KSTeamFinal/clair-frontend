@@ -16,6 +16,17 @@ type RiskItem = {
   clause_number?: string | number | null;
 };
 
+type ComplianceItem = {
+  clause_id?: string;
+  clauseId?: string;
+  clause_title?: string;
+  clauseTitle?: string;
+  status?: string;
+  reason?: string;
+  clause_text?: string;
+  clauseText?: string;
+};
+
 const pageFontFamily =
   'Pretendard, Inter, "Noto Sans KR", -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
 
@@ -219,6 +230,38 @@ export default function SharePage() {
     return Array.isArray(found) ? found : [];
   }, [data, contractResult]);
 
+  const compliance: ComplianceItem[] = useMemo(() => {
+    const candidates = [
+      data?.compliance_results,
+      data?.complianceResults,
+      data?.compliance,
+      data?.law_compliance,
+      data?.lawCompliance,
+
+      contractResult?.compliance_results,
+      contractResult?.complianceResults,
+      contractResult?.compliance,
+      contractResult?.law_compliance,
+      contractResult?.lawCompliance,
+
+      data?.analysis?.compliance_results,
+      data?.analysis?.complianceResults,
+      data?.analysis?.compliance,
+      data?.analysis?.law_compliance,
+      data?.analysis?.lawCompliance,
+
+      data?.contract?.compliance_results,
+      data?.contract?.complianceResults,
+      data?.contract?.compliance,
+      data?.contract?.law_compliance,
+      data?.contract?.lawCompliance,
+    ];
+
+    const found = candidates.find((item) => Array.isArray(item));
+
+    return Array.isArray(found) ? found : [];
+  }, [data, contractResult]);
+
   const score = useMemo(() => {
     const candidates = [
       contractResult?.safety_score,
@@ -359,6 +402,39 @@ export default function SharePage() {
         return '✓';
       default:
         return '!';
+    }
+  };
+
+  const getComplianceStatusStyle = (status?: string) => {
+    switch (status) {
+      case '위반':
+        return {
+          card: 'bg-[#FFF1F1] border-[#FFD6D6]',
+          badge: 'bg-[#FF4D3D] text-white',
+          icon: 'bg-[#FF4D3D] text-white',
+          iconText: '!',
+        };
+      case '주의':
+        return {
+          card: 'bg-[#FFF9E8] border-[#FFE9A8]',
+          badge: 'bg-[#F5A623] text-white',
+          icon: 'bg-[#F5A623] text-white',
+          iconText: '!',
+        };
+      case '적합':
+        return {
+          card: 'bg-[#ECFFF7] border-[#BFEFD8]',
+          badge: 'bg-[#18B982] text-white',
+          icon: 'bg-[#18B982] text-white',
+          iconText: '✓',
+        };
+      default:
+        return {
+          card: 'bg-[#FAFBFE] border-[#E4E9F5]',
+          badge: 'bg-[#EEF2F9] text-[#5F75B1]',
+          icon: 'bg-[#5F75B1] text-white',
+          iconText: '?',
+        };
     }
   };
 
@@ -708,6 +784,71 @@ export default function SharePage() {
                     ) : (
                       <div className="rounded-[22px] bg-[#F7F8FC] px-5 py-5 text-sm font-medium text-[#8A94AA]">
                         위험 요소 정보가 없습니다.
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="rounded-[32px] border border-[#E4E9F5] bg-white px-5 py-5 shadow-[0_14px_34px_rgba(95,117,177,0.08)] sm:px-6 sm:py-6">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <h3 className="text-base font-extrabold tracking-[-0.04em] text-[#26324D]">
+                        법령 준수 검사
+                      </h3>
+
+                      <span className="rounded-full bg-[#EEF2F9] px-3 py-1 text-xs font-bold text-[#5F75B1]">
+                        {compliance.length}개
+                      </span>
+                    </div>
+
+                    {compliance.length > 0 ? (
+                      <div className="space-y-3">
+                        {compliance.map((item, index) => {
+                          const status = item?.status ?? '검토불가';
+                          const statusStyle = getComplianceStatusStyle(status);
+                          const title =
+                            item?.clause_title ??
+                            item?.clauseTitle ??
+                            item?.clause_id ??
+                            item?.clauseId ??
+                            '조항';
+
+                          return (
+                            <div
+                              key={`${title}-${index}`}
+                              className={`rounded-[22px] border px-5 py-4 ${statusStyle.card}`}
+                            >
+                              <div className="mb-2 flex flex-wrap items-center gap-2">
+                                <span
+                                  className={`flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-bold ${statusStyle.icon}`}
+                                >
+                                  {statusStyle.iconText}
+                                </span>
+
+                                <p className="text-sm font-extrabold text-[#26324D]">
+                                  {title}
+                                </p>
+
+                                <span
+                                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${statusStyle.badge}`}
+                                >
+                                  {status}
+                                </span>
+                              </div>
+
+                              <p className="text-sm font-medium leading-6 text-[#5F6678]">
+                                {item?.reason ??
+                                  item?.clause_text ??
+                                  item?.clauseText ??
+                                  '법령 준수 검사 상세 정보가 없습니다.'}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-[22px] bg-[#F7F8FC] px-5 py-5 text-sm font-medium leading-6 text-[#8A94AA]">
+                        법령 준수 검사 정보가 없습니다.
+                        <br />
+                        공유 API 응답에 법령 준수 데이터가 포함되어야 표시됩니다.
                       </div>
                     )}
                   </section>
