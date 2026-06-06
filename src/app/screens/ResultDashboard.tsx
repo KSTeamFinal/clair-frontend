@@ -140,17 +140,40 @@ function getKeyInfoValue(keyInfo: any, keys: string[], fallback = '-') {
   return fallback;
 }
 
+function unwrapKeyInfoValue(raw: unknown) {
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    return (raw as any).value;
+  }
+
+  return raw;
+}
+
 function toNum(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
 
-  const v =
-    typeof raw === 'object' && raw !== null && 'value' in raw
-      ? (raw as any).value
-      : raw;
+  const v = unwrapKeyInfoValue(raw);
 
-  const n = Number(v);
+  const n = Number(String(v).replace(/[^\d.-]/g, ''));
 
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function cleanMoneyText(value: unknown) {
+  const text = String(unwrapKeyInfoValue(value) ?? '').trim();
+
+  if (!text) return '-';
+
+  const numeric = toNum(text);
+  if (numeric) {
+    return new Intl.NumberFormat('ko-KR').format(Math.round(numeric)) + '원';
+  }
+
+  return text
+    .replace(/^금\s*/u, '')
+    .replace(/\s*정$/u, '')
+    .replace(/\(\s*금\s*/u, '(')
+    .replace(/\s*정\s*\)$/u, ')')
+    .trim();
 }
 
 function firstArray(...values: unknown[]) {
@@ -187,24 +210,69 @@ function normalizeComplianceStatus(value: unknown): ComplianceStatus {
 }
 
 function normalizeAnalysis(data: any): AnalysisResult {
-  const keyInfo = data?.analysis?.key_info ?? {};
+  const source = data?.data?.contract ?? data?.contract ?? data?.data ?? data;
+  const analysisSource =
+    source?.analysis ??
+    data?.analysis ??
+    source?.analysis_result ??
+    data?.analysis_result ??
+    source?.result ??
+    data?.result ??
+    {};
+  const keyInfo =
+    analysisSource?.key_info ??
+    analysisSource?.keyInfo ??
+    source?.key_info ??
+    source?.keyInfo ??
+    {};
+  const riskSource =
+    firstArray(
+      source?.risk_clauses,
+      source?.risks,
+      source?.risk_factors,
+      source?.riskFactors,
+      source?.risk_items,
+      source?.riskItems,
+      analysisSource?.risk_clauses,
+      analysisSource?.risks,
+      analysisSource?.risk_factors,
+      analysisSource?.riskFactors,
+      analysisSource?.risk_items,
+      analysisSource?.riskItems,
+      data?.risk_clauses,
+      data?.risks,
+      data?.analysis_result?.risk_clauses,
+      data?.analysis_result?.risks,
+      data?.result?.risk_clauses,
+      data?.result?.risks,
+    ) ?? [];
 
-  const risks: RiskItem[] = Array.isArray(data?.risk_clauses)
-    ? data.risk_clauses.map((risk: any) => ({
+  const risks: RiskItem[] = riskSource
+    .map((risk: any) => ({
         title:
           risk?.title ??
           risk?.risk_type ??
+          risk?.riskType ??
+          risk?.type ??
           risk?.clause_number ??
+          risk?.clauseNumber ??
+          risk?.clause_title ??
+          risk?.clauseTitle ??
           risk?.original_text?.slice?.(0, 24) ??
+          risk?.text?.slice?.(0, 24) ??
           '확인 필요 조항',
         description:
           risk?.explanation ??
+          risk?.description ??
+          risk?.reason ??
+          risk?.message ??
           risk?.evidence_text ??
+          risk?.evidenceText ??
           risk?.original_text ??
+          risk?.text ??
           '해당 조항은 추가 확인이 필요합니다.',
-        level: normalizeRiskLevel(risk?.risk_level),
-      }))
-    : [];
+        level: normalizeRiskLevel(risk?.risk_level ?? risk?.riskLevel ?? risk?.level ?? risk?.severity),
+      }));
 
   const highCount = risks.filter((risk) => risk.level === 'high').length;
   const mediumCount = risks.filter((risk) => risk.level === 'medium').length;
@@ -233,19 +301,39 @@ function normalizeAnalysis(data: any): AnalysisResult {
       data?.contract?.compliance_results,
       data?.contract?.analysis?.compliance_results,
       data?.contract?.analysis?.compliance,
+      source?.compliance_results,
+      source?.compliance,
+      source?.analysis_result?.compliance_results,
+      source?.analysis_result?.compliance,
     ) ?? [];
 
   return {
-    fileName: data?.original_filename ?? '근로계약서.pdf',
-    contractType: String(data?.contract_type ?? 'unknown').toLowerCase(),
+    fileName:
+      source?.original_filename ??
+      source?.originalFilename ??
+      source?.filename ??
+      source?.file_name ??
+      data?.original_filename ??
+      '근로계약서.pdf',
+    contractType: String(source?.contract_type ?? analysisSource?.contract_type ?? 'unknown').toLowerCase(),
     analyzedDate: formatDate(
-      data?.analysis_completed_at ??
-        data?.analysis?.created_at ??
+      source?.analysis_completed_at ??
+        analysisSource?.completed_at ??
+        analysisSource?.created_at ??
+        source?.updated_at ??
+        source?.created_at ??
+        data?.analysis_completed_at ??
         data?.updated_at ??
         data?.created_at,
     ),
     safetyScore:
-      Number(data?.safety_score ?? data?.analysis?.safety_score ?? calculatedScore) || 0,
+      Number(
+        source?.safety_score ??
+          analysisSource?.safety_score ??
+          analysisSource?.score ??
+          data?.safety_score ??
+          calculatedScore,
+      ) || 0,
     contractStartDate: getKeyInfoValue(
       keyInfo,
       ['start_date', 'contract_start_date', 'contractStartDate', 'period_start', '시작일', '계약시작일'],
@@ -301,7 +389,10 @@ function normalizeAnalysis(data: any): AnalysisResult {
       ),
     ),
     summaryText:
-      data?.analysis?.summary ?? data?.summary ?? '계약서 분석 결과를 확인해보세요.',
+      analysisSource?.summary ??
+      source?.summary ??
+      data?.summary ??
+      '계약서 분석 결과를 확인해보세요.',
     risks,
     hourlyWage: toNum(keyInfo?.hourly_wage),
     weeklyWorkHours: toNum(keyInfo?.weekly_work_hours),
@@ -1061,18 +1152,19 @@ export function ResultDashboard() {
           </div>
 
           <div className="min-w-0 rounded-[20px] border border-slate-100 bg-white px-4 py-4 shadow-sm">
-            <div className="flex h-full min-h-[220px] flex-col items-center justify-center text-center">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-emerald-50 text-emerald-600">
-                <DollarSign size={17} />
-              </div>
-
-              <div className="mt-3 w-full min-w-0 text-center">
-                <span className="block text-[13px] font-medium text-slate-500">
+            <div className="flex h-full min-h-[220px] flex-col text-center">
+              <div className="flex flex-col items-center">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-emerald-50 text-emerald-600">
+                  <DollarSign size={17} />
+                </div>
+                <span className="mt-3 block text-[13px] font-medium text-slate-500">
                   {contractAmountLabel}
                 </span>
+              </div>
 
-                <div className="mt-2 flex w-full flex-wrap items-center justify-center gap-2 text-center">
-                  <span className="block max-w-full break-words text-center text-[20px] font-semibold tracking-[-0.04em] text-slate-900">
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                <div className="flex w-full flex-wrap items-center justify-center gap-2 text-center">
+                  <span className="block max-w-full break-words text-center text-[20px] font-semibold tracking-[-0.04em] text-slate-900 sm:text-[22px]">
                     {contractAmount}
                   </span>
 
@@ -1082,13 +1174,13 @@ export function ResultDashboard() {
                     </span>
                   )}
                 </div>
-
-                <p className="mx-auto mt-1 max-w-full break-words text-center text-[12px] leading-5 text-slate-500">
-                  {analysis.monthlyWageIsEstimated
-                    ? '시간급 기반으로 계산한 추정 금액이에요.'
-                    : analysis.salaryDetail}
-                </p>
               </div>
+
+              <p className="mx-auto max-w-full break-words text-center text-[12px] leading-5 text-slate-500">
+                {analysis.monthlyWageIsEstimated
+                  ? '시간급 기반으로 계산한 추정 금액이에요.'
+                  : analysis.salaryDetail}
+              </p>
             </div>
           </div>
         </div>
@@ -1150,7 +1242,7 @@ export function ResultDashboard() {
 
               {analysis.monthlyWage && (
                 <div
-                  className={`min-h-[78px] rounded-[14px] px-4 py-3 ${
+                  className={`flex min-h-[78px] w-full flex-col rounded-[14px] px-4 py-3 ${
                     analysis.monthlyWageIsEstimated ? 'bg-amber-50' : 'bg-emerald-50'
                   }`}
                 >
@@ -1162,7 +1254,7 @@ export function ResultDashboard() {
                     {analysis.monthlyWageIsEstimated ? '예상 월급여' : '월급여'}
                   </p>
                   <p
-                    className={`mt-1 break-words text-center text-[15px] font-semibold leading-6 ${
+                    className={`flex flex-1 items-center justify-center break-words text-center text-[15px] font-semibold leading-6 ${
                       analysis.monthlyWageIsEstimated ? 'text-amber-800' : 'text-emerald-800'
                     }`}
                   >
