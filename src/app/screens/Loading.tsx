@@ -74,6 +74,7 @@ export function Loading() {
   const [errorMessage, setErrorMessage] = useState('');
 
   const isStarted = useRef(false);
+  const loadingStartedAt = useRef(Date.now());
   const staleResultMessageShown = useRef(false);
 
   const steps: Step[] = useMemo(
@@ -239,6 +240,23 @@ export function Loading() {
             statusFromStatusEndpoint === 'analyzed' ||
             statusFromStatusEndpoint === 'finished' ||
             statusFromStatusEndpoint.includes('완료'));
+
+        const isProcessing =
+          status === 'pending' ||
+          status === 'queued' ||
+          status === 'processing' ||
+          status === 'running' ||
+          status === 'analyzing' ||
+          status === 'in_progress' ||
+          status === 'progress' ||
+          status.includes('대기') ||
+          status.includes('진행') ||
+          status.includes('분석 중');
+
+        if (isProcessing) {
+          return;
+        }
+
         const realProgress = getRealProgress(statusData, data);
         const realStep = getRealStep(statusData, data);
         const realLogs = getRealLogs(statusData, data);
@@ -332,7 +350,8 @@ export function Loading() {
             status === 'analyzed' ||
             status === 'finished' ||
             status.includes('완료') ||
-            (!requestedTime && hasResultPayload));
+            hasResultPayload) &&
+            (hasFreshResultTime || hasWaitedForReanalysis));
 
         if (isCompleted) {
           stopPolling();
