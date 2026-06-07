@@ -69,6 +69,15 @@ type RawContract = {
   deleted_at?: string;
 };
 
+type DeletedContractPayload = {
+  deleted_contracts?: RawContract[];
+  deletedContracts?: RawContract[];
+  history?: RawContract[];
+  contracts?: RawContract[];
+  items?: RawContract[];
+  data?: RawContract[];
+};
+
 function SectionCard({
   title,
   subtitle,
@@ -205,14 +214,7 @@ export default function ContractManagementScreen() {
   const navigate = useNavigate();
 
   const [contracts, setContracts] = useState<Contract[]>([]);
-  const [deletedContracts, setDeletedContracts] = useState<Contract[]>(() => {
-    try {
-      const stored = localStorage.getItem('deletedContracts');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [deletedContracts, setDeletedContracts] = useState<Contract[]>([]);
   const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [showAllContracts, setShowAllContracts] = useState(false);
@@ -225,9 +227,11 @@ export default function ContractManagementScreen() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   const [loading, setLoading] = useState(false);
+  const [loadingDeleteHistory, setLoadingDeleteHistory] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteHistoryError, setDeleteHistoryError] = useState('');
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
@@ -338,7 +342,8 @@ export default function ContractManagementScreen() {
     const source = raw.contract ?? raw.data?.contract ?? raw.data ?? raw;
     const analysisSource = raw.analysis ?? source.analysis ?? raw.data?.analysis;
     const id = source.id ?? source.contract_id ?? source.contractId ?? fallbackId;
-    const sortSource = source.updated_at ?? source.uploaded_at ?? source.created_at;
+    const sortSource =
+      source.deleted_at ?? source.updated_at ?? source.uploaded_at ?? source.created_at;
     const fileName =
       source.file_name ??
       source.filename ??
@@ -373,18 +378,47 @@ export default function ContractManagementScreen() {
     return [];
   };
 
+  const extractDeletedContractArray = (data: DeletedContractPayload | RawContract[]) => {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.deleted_contracts)) return data.deleted_contracts;
+    if (Array.isArray(data.deletedContracts)) return data.deletedContracts;
+    if (Array.isArray(data.history)) return data.history;
+    return extractContractArray(data);
+  };
+
   const extractUploadedContractId = (data: any): number | null => {
     const rawId =
-      data?.id ??
       data?.contract_id ??
       data?.contractId ??
-      data?.contract?.id ??
       data?.contract?.contract_id ??
+      data?.contract?.contractId ??
+      data?.contract?.id ??
+      data?.data?.contract_id ??
+      data?.data?.contractId ??
+      data?.data?.contract?.contract_id ??
+      data?.data?.contract?.contractId ??
+      data?.data?.contract?.id ??
       data?.data?.id ??
-      data?.data?.contract_id;
+      data?.id;
 
     const id = Number(rawId);
     return Number.isFinite(id) && id > 0 ? id : null;
+  };
+
+  const requestAnalysis = async (contractId: number) => {
+    try {
+      return await client.post(`/api/v1/contracts/${contractId}/analyze`, null, {
+        params: { force: true },
+      });
+    } catch (error: any) {
+      if (![404, 405, 422].includes(error?.response?.status)) {
+        throw error;
+      }
+
+      return client.post(`/api/v1/contracts/${contractId}/request-analysis`, null, {
+        params: { force: true },
+      });
+    }
   };
 
   const fetchContracts = useCallback(
@@ -439,9 +473,32 @@ export default function ContractManagementScreen() {
     }
   }, []);
 
+  const fetchDeletedContracts = useCallback(async () => {
+    try {
+      setLoadingDeleteHistory(true);
+      setDeleteHistoryError('');
+
+      const response = await client.get('/api/v1/contracts/deleted');
+      const list = extractDeletedContractArray(response.data)
+        .map((contract, index) => ({
+          ...normalizeContract(contract, index + 1),
+          status: '삭제됨' as ContractStatus,
+        }))
+        .sort((a, b) => b.sortTime - a.sortTime || b.id - a.id);
+
+      setDeletedContracts(list);
+    } catch (error) {
+      console.error('삭제 이력 조회 실패:', error);
+      setDeleteHistoryError('삭제 이력을 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setLoadingDeleteHistory(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchContracts();
-  }, [fetchContracts]);
+    fetchDeletedContracts();
+  }, [fetchContracts, fetchDeletedContracts]);
 
   useEffect(() => {
     if (selectedContractId) {
@@ -465,6 +522,12 @@ export default function ContractManagementScreen() {
   useEffect(() => {
     setShowAllContracts(false);
   }, [search]);
+
+  useEffect(() => {
+    if (deleteHistoryOpen) {
+      fetchDeletedContracts();
+    }
+  }, [deleteHistoryOpen, fetchDeletedContracts]);
 
   const selectedContract =
     contracts.find((contract) => contract.id === selectedContractId) ??
@@ -592,20 +655,6 @@ export default function ContractManagementScreen() {
 
       await client.delete(`/api/v1/contracts/${deleteTargetId}`);
 
-      if (target) {
-        const newRecord: Contract = {
-          ...target,
-          status: '삭제됨',
-          updatedAt: '방금 전',
-          deletedAt: new Date().toLocaleDateString('ko-KR'),
-        };
-        setDeletedContracts((prev) => {
-          const updated = [newRecord, ...prev];
-          localStorage.setItem('deletedContracts', JSON.stringify(updated));
-          return updated;
-        });
-      }
-
       const remaining = contracts.filter((contract) => contract.id !== deleteTargetId);
 
       setContracts(remaining);
@@ -613,6 +662,18 @@ export default function ContractManagementScreen() {
       setShowDeleteModal(false);
       setDeleteTargetId(null);
       setShowAllContracts(false);
+      if (target) {
+        setDeletedContracts((prev) => [
+          {
+            ...target,
+            status: '삭제됨',
+            updatedAt: '방금 전',
+            deletedAt: new Date().toLocaleDateString('ko-KR'),
+          },
+          ...prev.filter((contract) => contract.id !== target.id),
+        ]);
+      }
+      fetchDeletedContracts();
     } catch (error: any) {
       console.error('삭제 실패:', error?.response?.status, error?.response?.data);
       const detail = error?.response?.data?.detail || error?.response?.data?.message;
@@ -634,11 +695,15 @@ export default function ContractManagementScreen() {
       setAnalyzing(true);
 
       const analysisRequestedAt = new Date().toISOString();
-      await client.post(`/api/v1/contracts/${selectedContract.id}/analyze`, null, {
-        params: { force: true },
-      });
+      await requestAnalysis(selectedContract.id);
 
-      navigate(`/loading/${selectedContract.id}`, { state: { analysisRequestedAt } });
+      navigate(`/loading/${selectedContract.id}`, {
+        state: {
+          analysisRequestedAt,
+          expectedFileName: selectedContract.fileName,
+          requireFreshAnalysis: true,
+        },
+      });
     } catch (error: any) {
       const detail = error?.response?.data?.detail || error?.response?.data?.message;
 
@@ -962,6 +1027,18 @@ export default function ContractManagementScreen() {
                 onToggle={() => setDeleteHistoryOpen((prev) => !prev)}
               >
                 <div className="mx-auto w-full max-w-[900px] space-y-2.5">
+                  {loadingDeleteHistory && (
+                    <div className="rounded-[16px] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-[12px] text-slate-400 sm:text-[13px]">
+                      삭제 이력을 불러오는 중이에요.
+                    </div>
+                  )}
+
+                  {!loadingDeleteHistory && deleteHistoryError && (
+                    <div className="rounded-[16px] border border-dashed border-rose-100 bg-rose-50 px-4 py-8 text-center text-[12px] text-rose-400 sm:text-[13px]">
+                      {deleteHistoryError}
+                    </div>
+                  )}
+
                   {deletedContracts.map((contract) => (
                     <div key={contract.id} className="rounded-[14px] border border-slate-100 bg-white p-3">
                       <div className="flex items-start gap-3">
@@ -990,7 +1067,7 @@ export default function ContractManagementScreen() {
                     </div>
                   ))}
 
-                  {deletedContracts.length === 0 && (
+                  {!loadingDeleteHistory && !deleteHistoryError && deletedContracts.length === 0 && (
                     <div className="rounded-[16px] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-[12px] text-slate-400 sm:text-[13px]">
                       삭제된 계약서 이력이 없어요.
                     </div>

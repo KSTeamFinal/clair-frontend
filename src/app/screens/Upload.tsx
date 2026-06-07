@@ -21,6 +21,41 @@ type Message = {
   text: string;
 };
 
+const extractUploadedContractId = (data: any) => {
+  const rawId =
+    data?.contract_id ??
+    data?.contractId ??
+    data?.contract?.contract_id ??
+    data?.contract?.contractId ??
+    data?.contract?.id ??
+    data?.data?.contract_id ??
+    data?.data?.contractId ??
+    data?.data?.contract?.contract_id ??
+    data?.data?.contract?.contractId ??
+    data?.data?.contract?.id ??
+    data?.data?.id ??
+    data?.id;
+
+  const id = Number(rawId);
+  return Number.isFinite(id) && id > 0 ? id : null;
+};
+
+const requestAnalysis = async (contractId: number) => {
+  try {
+    return await client.post(`/api/v1/contracts/${contractId}/analyze`, null, {
+      params: { force: true },
+    });
+  } catch (error: any) {
+    if (![404, 405, 422].includes(error?.response?.status)) {
+      throw error;
+    }
+
+    return client.post(`/api/v1/contracts/${contractId}/request-analysis`, null, {
+      params: { force: true },
+    });
+  }
+};
+
 export function Upload() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -182,7 +217,7 @@ export function Upload() {
         },
       });
 
-      const contractId = uploadResponse.data?.id;
+      const contractId = extractUploadedContractId(uploadResponse.data);
 
       if (!contractId) {
         throw new Error('업로드 응답에서 계약서 ID를 찾을 수 없습니다.');
@@ -190,11 +225,14 @@ export function Upload() {
 
       // 2. 분석 요청
       const analysisRequestedAt = new Date().toISOString();
-      await client.post(`/api/v1/contracts/${contractId}/analyze`, null, {
-        params: { force: true },
-      });
+      await requestAnalysis(contractId);
 
-      navigate(`/loading/${contractId}`, { state: { analysisRequestedAt } });
+      navigate(`/loading/${contractId}`, {
+        state: {
+          analysisRequestedAt,
+          expectedFileName: uploadedFile,
+        },
+      });
     } catch (error: any) {
       console.error('업로드/분석 요청 에러:', error);
       const detail = error.response?.data?.detail || '서버 통신 중 오류가 발생했습니다.';
