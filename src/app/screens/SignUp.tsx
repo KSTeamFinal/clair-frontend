@@ -167,6 +167,7 @@ export function SignUp() {
       !email.trim() ||
       !nickname.trim() ||
       !password.trim() ||
+      password.length < 8 ||
       !passwordCheck.trim() ||
       password !== passwordCheck
     ) {
@@ -397,6 +398,9 @@ export function SignUp() {
                     disabled={!emailVerified}
                     className="h-[52px] w-full rounded-[16px] border border-slate-200/80 bg-white/88 px-4 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#8097F8] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 sm:h-[56px] sm:rounded-[18px] sm:text-[16px]"
                   />
+                  <p className="mt-2 text-left text-[12px] font-medium text-slate-400 sm:text-[13px]">
+                    비밀번호는 8자 이상이어야 합니다.
+                  </p>
                 </div>
 
                 <div className="mt-5 sm:mt-6">

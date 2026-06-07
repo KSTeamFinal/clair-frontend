@@ -32,6 +32,7 @@ export default function ProfileScreen() {
   const [selectedProfileFile, setSelectedProfileFile] = useState<File | null>(null);
   const [profileImageDeleted, setProfileImageDeleted] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
 
   const [user, setUser] = useState({
     name: '',
@@ -199,9 +200,22 @@ export default function ProfileScreen() {
         ]);
       }
 
-      if (currentPassword.trim() || user.password.trim()) {
-        if (!currentPassword.trim() || !user.password.trim()) {
-          showToast('현재 비밀번호와 새 비밀번호를 모두 입력해주세요.');
+      const hasPasswordChange =
+        currentPassword.trim() || user.password.trim() || newPasswordConfirm.trim();
+
+      if (hasPasswordChange) {
+        if (!currentPassword.trim() || !user.password.trim() || !newPasswordConfirm.trim()) {
+          showToast('현재 비밀번호, 새 비밀번호, 새 비밀번호 확인을 모두 입력해주세요.');
+          return;
+        }
+
+        if (user.password.trim().length < 8) {
+          showToast('새 비밀번호는 8자 이상이어야 합니다.');
+          return;
+        }
+
+        if (user.password.trim() !== newPasswordConfirm.trim()) {
+          showToast('새 비밀번호가 일치하지 않습니다.');
           return;
         }
 
@@ -245,6 +259,7 @@ export default function ProfileScreen() {
       setUser(nextUser);
       setSavedUser(nextUser);
       setCurrentPassword('');
+      setNewPasswordConfirm('');
       syncStoredUserInfo(nextName);
       setSelectedProfileFile(null);
       setProfileImageDeleted(false);
@@ -261,6 +276,7 @@ export default function ProfileScreen() {
   const handleCancelEdit = () => {
     setUser(savedUser);
     setCurrentPassword('');
+    setNewPasswordConfirm('');
     setProfileImage(savedProfileImage);
     setSelectedProfileFile(null);
     setProfileImageDeleted(false);
@@ -459,10 +475,25 @@ export default function ProfileScreen() {
                     aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
                   >
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
+                  </button>
                   </div>
                   <p className="mt-1.5 text-[11px] text-slate-400">
-                    현재 비밀번호와 새 비밀번호를 모두 입력한 경우에만 변경됩니다.
+                    새 비밀번호는 8자 이상으로 입력해주세요.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-[12px] text-slate-400">새 비밀번호 확인</label>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    disabled={!isEdit}
+                    value={newPasswordConfirm}
+                    placeholder="새 비밀번호를 다시 입력"
+                    onChange={(e) => setNewPasswordConfirm(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[14px] disabled:bg-slate-50"
+                  />
+                  <p className="mt-1.5 text-[11px] text-slate-400">
+                    현재 비밀번호가 맞고 두 새 비밀번호가 일치하면 변경됩니다.
                   </p>
                 </div>
               </div>
@@ -496,7 +527,7 @@ export default function ProfileScreen() {
 
             <section className="mt-4 rounded-[20px] border border-white/90 bg-white/90 p-4 shadow-sm backdrop-blur">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#EEF2FF]">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#EEF2FF]">
                   <Shield className="h-5 w-5 text-[#6C80DD]" />
                 </div>
 
@@ -511,32 +542,59 @@ export default function ProfileScreen() {
               </div>
 
               <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100 bg-white">
-                <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
-                  <Mail className="h-4 w-4 text-slate-500" />
-                  <span className="flex-1 text-[13px] font-medium text-slate-800">
-                    이메일 인증
-                  </span>
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-600">
+                <div className="flex items-center gap-4 border-b border-slate-100 px-5 py-4">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F8FAFF]">
+                    <Mail className="h-4 w-4 text-slate-600" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-slate-900">
+                      이메일 인증
+                    </p>
+                    <p className="mt-1 truncate text-[12px] leading-5 text-slate-400">
+                      {user.email || '이메일 정보 없음'}
+                    </p>
+                  </div>
+
+                  <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-600">
                     인증 완료
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
-                  <User className="h-4 w-4 text-slate-500" />
-                  <span className="flex-1 text-[13px] font-medium text-slate-800">
-                    계정 상태
-                  </span>
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-600">
+                <div className="flex items-center gap-4 border-b border-slate-100 px-5 py-4">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F8FAFF]">
+                    <User className="h-4 w-4 text-slate-600" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-slate-900">
+                      계정 상태
+                    </p>
+                    <p className="mt-1 text-[12px] leading-5 text-slate-400">
+                      CLAIR 계정을 정상적으로 이용 중입니다.
+                    </p>
+                  </div>
+
+                  <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-600">
                     활성
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <Calendar className="h-4 w-4 text-slate-500" />
-                  <span className="flex-1 text-[13px] font-medium text-slate-800">
-                    가입일
-                  </span>
-                  <span className="text-[12px] text-slate-500">
+                <div className="flex items-center gap-4 px-5 py-4">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F8FAFF]">
+                    <Calendar className="h-4 w-4 text-slate-600" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-slate-900">
+                      가입일
+                    </p>
+                    <p className="mt-1 text-[12px] leading-5 text-slate-400">
+                      계정을 처음 만든 날짜입니다.
+                    </p>
+                  </div>
+
+                  <span className="shrink-0 text-[12px] font-medium text-slate-500">
                     {user.createdAt
                       ? new Date(user.createdAt).toLocaleDateString()
                       : '정보 없음'}
@@ -547,7 +605,7 @@ export default function ProfileScreen() {
 
             <section className="mt-4 rounded-[20px] border border-white/90 bg-white/90 p-4 shadow-sm backdrop-blur">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#EEF2FF]">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#EEF2FF]">
                   <KeyRound className="h-5 w-5 text-[#6C80DD]" />
                 </div>
 
@@ -561,17 +619,23 @@ export default function ProfileScreen() {
                 </div>
               </div>
 
-              <div className="mt-4 space-y-3">
-                <button
-                  type="button"
+              <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100 bg-white">
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setIsEdit(true)}
-                  className="flex w-full items-center gap-4 rounded-2xl border border-slate-100 bg-white px-5 py-4 text-left transition hover:bg-[#F8FAFF] sm:gap-5 sm:px-6 sm:py-5"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      setIsEdit(true);
+                    }
+                  }}
+                  className="flex cursor-pointer items-center gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-[#F8FAFF]"
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F8FAFF]">
                     <KeyRound className="h-4 w-4 text-slate-600" />
                   </div>
 
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <p className="text-[14px] font-semibold text-slate-900">
                       비밀번호 변경
                     </p>
@@ -582,18 +646,24 @@ export default function ProfileScreen() {
                   </div>
 
                   <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
-                </button>
+                </div>
 
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setShowLogoutModal(true)}
-                  className="flex w-full items-center gap-4 rounded-2xl border border-slate-100 bg-white px-5 py-4 text-left transition hover:bg-[#F8FAFF] sm:gap-5 sm:px-6 sm:py-5"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      setShowLogoutModal(true);
+                    }
+                  }}
+                  className="flex cursor-pointer items-center gap-4 border-b border-slate-100 px-5 py-4 transition hover:bg-[#F8FAFF]"
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F8FAFF]">
                     <LogOut className="h-4 w-4 text-slate-600" />
                   </div>
 
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <p className="text-[14px] font-semibold text-slate-900">
                       로그아웃
                     </p>
@@ -604,18 +674,24 @@ export default function ProfileScreen() {
                   </div>
 
                   <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
-                </button>
+                </div>
 
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={handleAccountDeleteClick}
-                  className="flex w-full items-center gap-4 rounded-2xl border border-red-100 bg-white px-5 py-4 text-left transition hover:bg-[#FFF7F7] sm:gap-5 sm:px-6 sm:py-5"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      handleAccountDeleteClick();
+                    }
+                  }}
+                  className="flex cursor-pointer items-center gap-4 px-5 py-4 transition hover:bg-[#FFF7F7]"
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#FFF5F5]">
                     <AlertTriangle className="h-4 w-4 text-red-400" />
                   </div>
 
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <p className="text-[14px] font-semibold text-slate-900">
                       계정 탈퇴
                     </p>
@@ -626,27 +702,9 @@ export default function ProfileScreen() {
                   </div>
 
                   <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
-                </button>
+                </div>
               </div>
             </section>
-
-            <div className="mt-5 border-t border-slate-200/70 pt-4 text-center">
-              <button
-                type="button"
-                onClick={() => setShowLogoutModal(true)}
-                style={{
-                  backgroundColor: '#EEF2FF',
-                  color: '#4C63D2',
-                }}
-                className="w-full rounded-2xl px-4 py-3 text-[14px] font-semibold shadow-sm transition hover:opacity-90"
-              >
-                로그아웃
-              </button>
-
-              <p className="mt-2 text-[12px] text-slate-400">
-                현재 계정에서 로그아웃됩니다
-              </p>
-            </div>
           </div>
         </main>
       </div>
