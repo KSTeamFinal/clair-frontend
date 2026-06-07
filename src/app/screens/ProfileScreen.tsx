@@ -24,9 +24,11 @@ export default function ProfileScreen() {
   const [isEdit, setIsEdit] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('프로필 정보가 저장되었습니다');
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [savedProfileImage, setSavedProfileImage] = useState<string | null>(null);
   const [selectedProfileFile, setSelectedProfileFile] = useState<File | null>(null);
@@ -291,7 +293,29 @@ export default function ProfileScreen() {
   };
 
   const handleAccountDeleteClick = () => {
-    showToast('회원 탈퇴 API가 아직 제공되지 않았습니다.');
+    setShowDeleteAccountModal(true);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (isDeletingAccount) return;
+
+    try {
+      setIsDeletingAccount(true);
+
+      await client.delete('/api/v1/auth/me');
+
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('userInfo');
+      localStorage.removeItem('profileImage');
+      setShowDeleteAccountModal(false);
+      navigate('/login', { replace: true });
+    } catch (error: any) {
+      console.error('회원 탈퇴 실패:', error);
+      showToast(getErrorMessage(error, '회원 탈퇴에 실패했습니다.'));
+    } finally {
+      setIsDeletingAccount(false);
+    }
   };
 
   const displayInitial = user.name ? user.name.charAt(0) : 'U';
@@ -750,6 +774,58 @@ export default function ProfileScreen() {
                 className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold shadow-sm transition hover:opacity-90"
               >
                 로그아웃
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-[360px] rounded-2xl bg-white p-5 shadow-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[16px] font-semibold text-slate-900">
+                  계정을 탈퇴하시겠어요?
+                </h2>
+                <p className="mt-2 text-[13px] leading-5 text-slate-500">
+                  탈퇴하면 계정과 관련 데이터가 삭제되며 복구할 수 없습니다.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowDeleteAccountModal(false)}
+                disabled={isDeletingAccount}
+                className="text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="회원 탈퇴 취소"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteAccountModal(false)}
+                disabled={isDeletingAccount}
+                className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[13px] font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                취소
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={isDeletingAccount}
+                style={{
+                  backgroundColor: '#EF4444',
+                  color: '#FFFFFF',
+                  border: '1px solid #EF4444',
+                }}
+                className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isDeletingAccount ? '탈퇴 중...' : '탈퇴'}
               </button>
             </div>
           </div>

@@ -55,11 +55,32 @@ const getLogTime = (log: any) => {
   return parsed && Number.isFinite(parsed) ? parsed : 0;
 };
 
+const extractContractId = (data: any) => {
+  const rawId =
+    data?.contract_id ??
+    data?.contractId ??
+    data?.contract?.contract_id ??
+    data?.contract?.contractId ??
+    data?.contract?.id ??
+    data?.data?.contract_id ??
+    data?.data?.contractId ??
+    data?.data?.contract?.contract_id ??
+    data?.data?.contract?.contractId ??
+    data?.data?.contract?.id ??
+    data?.data?.id ??
+    data?.id;
+
+  const id = Number(rawId);
+  return Number.isFinite(id) && id > 0 ? id : null;
+};
+
 export function Loading() {
   const { contractId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const analysisRequestedAt = (location.state as any)?.analysisRequestedAt;
+  const expectedFileName = (location.state as any)?.expectedFileName;
+  const requireFreshAnalysis = Boolean((location.state as any)?.requireFreshAnalysis);
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -76,6 +97,7 @@ export function Loading() {
   const isStarted = useRef(false);
   const loadingStartedAt = useRef(Date.now());
   const staleResultMessageShown = useRef(false);
+  const announcedStepIndexes = useRef(new Set([0]));
 
   const steps: Step[] = useMemo(
     () => [
@@ -91,13 +113,20 @@ export function Loading() {
   useEffect(() => {
     if (isStarted.current) return;
     isStarted.current = true;
+    loadingStartedAt.current = Date.now();
 
     let pollInterval: number | undefined;
+    let fakeProgressInterval: number | undefined;
 
     const stopPolling = () => {
       if (pollInterval) {
         window.clearInterval(pollInterval);
         pollInterval = undefined;
+      }
+
+      if (fakeProgressInterval) {
+        window.clearInterval(fakeProgressInterval);
+        fakeProgressInterval = undefined;
       }
     };
 
@@ -213,6 +242,15 @@ export function Loading() {
 
         const response = await client.get(`/api/v1/contracts/${contractId}`);
         const data = response.data;
+        const responseContractId = extractContractId(data);
+
+        if (responseContractId !== null && responseContractId !== Number(contractId)) {
+          console.warn('계약서 ID가 일치하지 않아 폴링 응답을 무시합니다:', {
+            routeContractId: contractId,
+            responseContractId,
+          });
+          return;
+        }
 
         const rawStatus =
           statusData?.status ??
@@ -241,22 +279,6 @@ export function Loading() {
             statusFromStatusEndpoint === 'finished' ||
             statusFromStatusEndpoint.includes('완료'));
 
-        const isProcessing =
-          status === 'pending' ||
-          status === 'queued' ||
-          status === 'processing' ||
-          status === 'running' ||
-          status === 'analyzing' ||
-          status === 'in_progress' ||
-          status === 'progress' ||
-          status.includes('대기') ||
-          status.includes('진행') ||
-          status.includes('분석 중');
-
-        if (isProcessing) {
-          return;
-        }
-
         const realProgress = getRealProgress(statusData, data);
         const realStep = getRealStep(statusData, data);
         const realLogs = getRealLogs(statusData, data);
@@ -266,9 +288,11 @@ export function Loading() {
         }
 
         if (realStep !== null) {
-          setCurrentStep(realStep);
+          setCurrentStep((prev) => Math.max(prev, realStep));
         } else if (realProgress !== null) {
-          setCurrentStep(Math.min(steps.length - 1, Math.floor(realProgress / 25)));
+          setCurrentStep((prev) =>
+            Math.max(prev, Math.min(steps.length - 1, Math.floor(realProgress / 25))),
+          );
         }
 
         realLogs.forEach((log) => {
@@ -296,7 +320,7 @@ export function Loading() {
           if (realProgress === null) {
             const inferredStep = realStep ?? getStepFromText(status);
             if (inferredStep !== null) {
-              setCurrentStep(inferredStep);
+              setCurrentStep((prev) => Math.max(prev, inferredStep));
               setProgress((prev) => Math.max(prev, Math.min(90, 15 + inferredStep * 20)));
             }
           }
@@ -329,10 +353,10 @@ export function Loading() {
           parseTime(data?.contract?.analysis_completed_at) ??
           parseTime(data?.contract?.updated_at);
 
+        const hasFreshResultTime =
+          !requestedTime || (resultTime !== null && resultTime >= requestedTime - 3000);
         const hasFreshResult =
-          isCompletedFromStatusEndpoint ||
-          !requestedTime ||
-          (resultTime !== null && resultTime >= requestedTime - 3000);
+          hasFreshResultTime || (!requireFreshAnalysis && isCompletedFromStatusEndpoint);
 
         const hasResultPayload =
           !!data?.analysis ||
@@ -350,8 +374,7 @@ export function Loading() {
             status === 'analyzed' ||
             status === 'finished' ||
             status.includes('완료') ||
-            hasResultPayload) &&
-            (hasFreshResultTime || hasWaitedForReanalysis));
+            (hasResultPayload && hasFreshResultTime));
 
         if (isCompleted) {
           stopPolling();
@@ -361,7 +384,14 @@ export function Loading() {
           addBotMessage('분석이 완료되었어요. 결과 화면으로 이동할게요.');
 
           window.setTimeout(() => {
-            navigate(`/result/${contractId}`, { replace: true });
+            navigate(`/result/${contractId}`, {
+              replace: true,
+              state: {
+                analysisRequestedAt,
+                expectedFileName,
+                requireFreshAnalysis,
+              },
+            });
           }, 1200);
 
           return;
@@ -412,6 +442,23 @@ export function Loading() {
       pollInterval = window.setInterval(() => {
         pollStatus();
       }, 3000);
+
+      fakeProgressInterval = window.setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 90) return prev;
+
+          const elapsedSeconds = (Date.now() - loadingStartedAt.current) / 1000;
+          const increment =
+            elapsedSeconds < 8 ? 1.8 : elapsedSeconds < 25 ? 1.1 : 0.45;
+          const next = Math.min(90, prev + increment);
+
+          setCurrentStep((step) =>
+            Math.max(step, Math.min(steps.length - 2, Math.floor(next / 22))),
+          );
+
+          return next;
+        });
+      }, 1000);
     };
 
     const startLoading = () => {
@@ -431,7 +478,25 @@ export function Loading() {
       stopPolling();
       isStarted.current = false;
     };
-  }, [analysisRequestedAt, contractId, navigate, steps]);
+  }, [analysisRequestedAt, contractId, expectedFileName, navigate, requireFreshAnalysis, steps]);
+
+  useEffect(() => {
+    const step = steps[currentStep];
+    if (!step || announcedStepIndexes.current.has(currentStep)) return;
+
+    announcedStepIndexes.current.add(currentStep);
+    setMessages((prev) => {
+      if (prev.some((message) => message.text === step.message)) return prev;
+
+      return [
+        ...prev,
+        {
+          role: 'bot',
+          text: step.message,
+        },
+      ];
+    });
+  }, [currentStep, steps]);
 
   return (
     <div

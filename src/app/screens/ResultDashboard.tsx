@@ -52,6 +52,7 @@ type ComplianceItem = {
 type AnalysisResult = {
   fileName: string;
   analyzedDate: string;
+  contractSignedDate: string;
   safetyScore: number;
   contractType: string;
   contractStartDate: string;
@@ -73,6 +74,7 @@ type AnalysisResult = {
 const DEFAULT_ANALYSIS: AnalysisResult = {
   fileName: '근로계약서.pdf',
   analyzedDate: '분석 완료',
+  contractSignedDate: '-',
   safetyScore: 0,
   contractType: 'unknown',
   contractStartDate: '-',
@@ -126,6 +128,19 @@ function formatDate(value: unknown) {
   const day = String(date.getDate()).padStart(2, '0');
 
   return `${year}.${month}.${day} 분석 완료`;
+}
+
+function formatDateOnly(value: unknown, fallback = '-') {
+  if (!value) return fallback;
+
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}.${month}.${day}`;
 }
 
 function getKeyInfoValue(keyInfo: any, keys: string[], fallback = '-') {
@@ -209,6 +224,36 @@ function normalizeComplianceStatus(value: unknown): ComplianceStatus {
   return '검토불가';
 }
 
+function extractContractId(data: any) {
+  const rawId =
+    data?.contract_id ??
+    data?.contractId ??
+    data?.contract?.contract_id ??
+    data?.contract?.contractId ??
+    data?.contract?.id ??
+    data?.data?.contract_id ??
+    data?.data?.contractId ??
+    data?.data?.contract?.contract_id ??
+    data?.data?.contract?.contractId ??
+    data?.data?.contract?.id ??
+    data?.data?.id ??
+    data?.id;
+
+  const id = Number(rawId);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function normalizeFileNameForCompare(value: unknown) {
+  const text = String(value ?? '');
+
+  if (!/\.[a-z0-9]+$/i.test(text)) return '';
+
+  return text
+    .replace(/\s+/g, '')
+    .replace(/\.[^/.]+$/, '')
+    .toLowerCase();
+}
+
 function normalizeAnalysis(data: any): AnalysisResult {
   const source = data?.data?.contract ?? data?.contract ?? data?.data ?? data;
   const analysisSource =
@@ -225,6 +270,29 @@ function normalizeAnalysis(data: any): AnalysisResult {
     source?.key_info ??
     source?.keyInfo ??
     {};
+  const contractSignedDate = formatDateOnly(
+    getKeyInfoValue(
+      keyInfo,
+      [
+        'contract_date',
+        'contractDate',
+        'contract_signed_date',
+        'contractSignedDate',
+        'signed_date',
+        'signedDate',
+        'signature_date',
+        'signatureDate',
+        'execution_date',
+        'executionDate',
+        'agreement_date',
+        'agreementDate',
+        '계약체결일',
+        '체결일',
+        '작성일',
+      ],
+      '',
+    ),
+  );
   const riskSource =
     firstArray(
       source?.risk_clauses,
@@ -316,16 +384,20 @@ function normalizeAnalysis(data: any): AnalysisResult {
       data?.original_filename ??
       '근로계약서.pdf',
     contractType: String(source?.contract_type ?? analysisSource?.contract_type ?? 'unknown').toLowerCase(),
-    analyzedDate: formatDate(
-      source?.analysis_completed_at ??
-        analysisSource?.completed_at ??
-        analysisSource?.created_at ??
-        source?.updated_at ??
-        source?.created_at ??
-        data?.analysis_completed_at ??
-        data?.updated_at ??
-        data?.created_at,
-    ),
+    analyzedDate:
+      contractSignedDate !== '-'
+        ? `${contractSignedDate} 분석 완료`
+        : formatDate(
+            source?.analysis_completed_at ??
+              analysisSource?.completed_at ??
+              analysisSource?.created_at ??
+              source?.updated_at ??
+              source?.created_at ??
+              data?.analysis_completed_at ??
+              data?.updated_at ??
+              data?.created_at,
+          ),
+    contractSignedDate,
     safetyScore:
       Number(
         source?.safety_score ??
@@ -444,6 +516,7 @@ export function ResultDashboard() {
     params.id ??
     (location.state as any)?.contractId ??
     (location.state as any)?.id;
+  const expectedFileName = (location.state as any)?.expectedFileName;
 
   const [analysis, setAnalysis] = useState<AnalysisResult>(DEFAULT_ANALYSIS);
   const [isLoading, setIsLoading] = useState(true);
@@ -559,7 +632,23 @@ export function ResultDashboard() {
         }
 
         const response = await client.get(`/api/v1/contracts/${contractId}`);
+        const responseContractId = extractContractId(response.data);
+
+        if (responseContractId !== null && responseContractId !== Number(contractId)) {
+          throw new Error(
+            `요청한 계약서(${contractId})와 다른 계약서(${responseContractId}) 응답을 받았습니다.`,
+          );
+        }
+
         const normalized = normalizeAnalysis(response.data);
+        const expectedName = normalizeFileNameForCompare(expectedFileName);
+        const responseName = normalizeFileNameForCompare(normalized.fileName);
+
+        if (expectedName && responseName && expectedName !== responseName) {
+          throw new Error(
+            `요청한 파일(${expectedFileName})과 다른 계약서(${normalized.fileName}) 응답을 받았습니다.`,
+          );
+        }
 
         setAnalysis(normalized);
 
@@ -578,6 +667,11 @@ export function ResultDashboard() {
         ]);
       } catch (error) {
         console.error('분석 결과 조회 실패:', error);
+        setAnalysis({
+          ...DEFAULT_ANALYSIS,
+          fileName: '분석 결과를 불러오지 못했어요',
+          summaryText: '요청한 계약서와 다른 결과가 응답되었거나 분석 결과 조회에 실패했습니다.',
+        });
 
         setDashboardMessages([
           {
@@ -658,6 +752,14 @@ export function ResultDashboard() {
     try {
       const response = await client.get(`/api/v1/contracts/${contractId}/download/pdf`, {
         responseType: 'blob',
+        params:
+          analysis.contractSignedDate !== '-'
+            ? {
+                report_date: analysis.contractSignedDate,
+                contract_date: analysis.contractSignedDate,
+                contract_signed_date: analysis.contractSignedDate,
+              }
+            : undefined,
       });
 
       const blob = new Blob([response.data], { type: 'application/pdf' });
@@ -1179,6 +1281,8 @@ export function ResultDashboard() {
               <p className="mx-auto max-w-full break-words text-center text-[12px] leading-5 text-slate-500">
                 {analysis.monthlyWageIsEstimated
                   ? '시간급 기반으로 계산한 추정 금액이에요.'
+                  : analysis.monthlyWage && analysis.salaryDetail !== '-'
+                  ? `연봉 ${analysis.salaryDetail}`
                   : analysis.salaryDetail}
               </p>
             </div>
