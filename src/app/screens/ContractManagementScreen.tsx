@@ -633,11 +633,20 @@ export default function ContractManagementScreen() {
     try {
       setAnalyzing(true);
 
-      await client.post(`/api/v1/contracts/${selectedContract.id}/analyze`);
+      const analysisRequestedAt = new Date().toISOString();
+      await client.post(`/api/v1/contracts/${selectedContract.id}/analyze`, null, {
+        params: { force: true },
+      });
 
-      navigate(`/loading/${selectedContract.id}`);
-    } catch {
-      setUploadErrorMessage('분석 요청에 실패했어요. 이미 분석 중인 계약서일 수 있어요.');
+      navigate(`/loading/${selectedContract.id}`, { state: { analysisRequestedAt } });
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail || error?.response?.data?.message;
+
+      setUploadErrorMessage(
+        detail
+          ? `분석 요청에 실패했어요: ${detail}`
+          : '분석 요청에 실패했어요. 잠시 후 다시 시도해주세요.'
+      );
       setShowUploadErrorModal(true);
     } finally {
       setAnalyzing(false);

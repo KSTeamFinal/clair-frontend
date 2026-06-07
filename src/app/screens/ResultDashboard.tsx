@@ -153,33 +153,37 @@ function toNum(raw: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function cleanMoneyText(value: string) {
-  if (!value || value === '-') return value;
+function firstArray(...values: unknown[]) {
+  return values.find(Array.isArray) as any[] | undefined;
+}
 
-  const normalized = value
-    .replace(/^금\s*/u, '')
-    .replace(/\(\s*/gu, '')
-    .replace(/\s*\)/gu, '')
-    .replace(/\s*원\s*정\b/gu, '원')
-    .replace(/\s+정$/u, '')
-    .trim();
+function normalizeComplianceStatus(value: unknown): ComplianceStatus {
+  const status = String(value ?? '').toLowerCase();
 
-  const numericOnly = normalized.replace(/,/g, '').trim();
-
-  if (/^\d+$/.test(numericOnly)) {
-    return `${new Intl.NumberFormat('ko-KR').format(Number(numericOnly))}원`;
+  if (status.includes('위반') || status.includes('violation') || status.includes('fail')) {
+    return '위반';
   }
 
-  const numericWonMatch = normalized.match(/(\d[\d,]*)\s*원/u);
-  if (numericWonMatch) {
-    const amount = Number(numericWonMatch[1].replace(/,/g, ''));
-
-    if (Number.isFinite(amount)) {
-      return `${new Intl.NumberFormat('ko-KR').format(amount)}원`;
-    }
+  if (
+    status.includes('주의') ||
+    status.includes('warning') ||
+    status.includes('caution') ||
+    status.includes('risk')
+  ) {
+    return '주의';
   }
 
-  return normalized;
+  if (
+    status.includes('적합') ||
+    status.includes('준수') ||
+    status.includes('compliant') ||
+    status.includes('pass') ||
+    status.includes('ok')
+  ) {
+    return '적합';
+  }
+
+  return '검토불가';
 }
 
 function normalizeAnalysis(data: any): AnalysisResult {
@@ -210,6 +214,26 @@ function normalizeAnalysis(data: any): AnalysisResult {
     0,
     Math.min(100, 100 - highCount * 15 - mediumCount * 8 - lowCount * 2),
   );
+  const complianceSource =
+    firstArray(
+      data?.compliance_results,
+      data?.compliance,
+      data?.law_compliance,
+      data?.law_checks,
+      data?.legal_checks,
+      data?.analysis?.compliance_results,
+      data?.analysis?.compliance,
+      data?.analysis?.law_compliance,
+      data?.analysis?.law_checks,
+      data?.analysis?.legal_checks,
+      data?.analysis_result?.compliance_results,
+      data?.analysis_result?.compliance,
+      data?.result?.compliance_results,
+      data?.result?.compliance,
+      data?.contract?.compliance_results,
+      data?.contract?.analysis?.compliance_results,
+      data?.contract?.analysis?.compliance,
+    ) ?? [];
 
   return {
     fileName: data?.original_filename ?? '근로계약서.pdf',
@@ -287,16 +311,35 @@ function normalizeAnalysis(data: any): AnalysisResult {
       keyInfo?.monthly_wage_is_estimated === true ||
       keyInfo?.monthly_wage_is_estimated?.value === true
     ),
-    compliance: Array.isArray(data?.compliance_results)
-      ? data.compliance_results.map((c: any) => ({
-          clauseId: c?.clause_id ?? '',
-          clauseTitle: c?.clause_title ?? c?.clause_id ?? '조항',
-          status: (['위반', '주의', '적합', '검토불가'].includes(c?.status)
-            ? c.status
-            : '검토불가') as ComplianceStatus,
-          reason: c?.reason ?? '',
-        }))
-      : [],
+    compliance: complianceSource.map((c: any, index: number) => ({
+      clauseId:
+        c?.clause_id ??
+        c?.clauseId ??
+        c?.law_id ??
+        c?.lawId ??
+        c?.article ??
+        c?.article_id ??
+        String(index + 1),
+      clauseTitle:
+        c?.clause_title ??
+        c?.clauseTitle ??
+        c?.law_title ??
+        c?.lawTitle ??
+        c?.title ??
+        c?.name ??
+        c?.clause_id ??
+        c?.law_id ??
+        '조항',
+      status: normalizeComplianceStatus(c?.status ?? c?.result ?? c?.level),
+      reason:
+        c?.reason ??
+        c?.message ??
+        c?.description ??
+        c?.detail ??
+        c?.explanation ??
+        c?.evidence_text ??
+        '',
+    })),
   };
 }
 
