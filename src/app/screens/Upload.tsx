@@ -189,9 +189,12 @@ export function Upload() {
       }
 
       // 2. 분석 요청
-      await client.post(`/api/v1/contracts/${contractId}/analyze`);
+      const analysisRequestedAt = new Date().toISOString();
+      await client.post(`/api/v1/contracts/${contractId}/analyze`, null, {
+        params: { force: true },
+      });
 
-      navigate(`/loading/${contractId}`);
+      navigate(`/loading/${contractId}`, { state: { analysisRequestedAt } });
     } catch (error: any) {
       console.error('업로드/분석 요청 에러:', error);
       const detail = error.response?.data?.detail || '서버 통신 중 오류가 발생했습니다.';

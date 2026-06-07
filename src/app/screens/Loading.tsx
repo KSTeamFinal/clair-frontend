@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Bot, Check, Loader2, AlertTriangle } from 'lucide-react';
 import client from '../../api/client';
 
@@ -13,9 +13,53 @@ type Step = {
   message: string;
 };
 
+const clampProgress = (value: number) => Math.max(0, Math.min(100, value));
+
+const normalizeText = (value: unknown) => String(value ?? '').trim();
+
+const toProgressNumber = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return null;
+
+  const numeric = Number(String(value).replace('%', ''));
+
+  return Number.isFinite(numeric) ? clampProgress(numeric) : null;
+};
+
+const getFirstValue = (sources: unknown[]) => {
+  for (const source of sources) {
+    if (source !== null && source !== undefined && source !== '') return source;
+  }
+
+  return null;
+};
+
+const getLogText = (log: any) =>
+  normalizeText(
+    typeof log === 'string'
+      ? log
+      : log?.message ??
+          log?.text ??
+          log?.content ??
+          log?.detail ??
+          log?.description ??
+          log?.event,
+  );
+
+const getLogTime = (log: any) => {
+  const raw =
+    typeof log === 'object'
+      ? log?.created_at ?? log?.timestamp ?? log?.time ?? log?.updated_at
+      : null;
+  const parsed = raw ? new Date(String(raw)).getTime() : null;
+
+  return parsed && Number.isFinite(parsed) ? parsed : 0;
+};
+
 export function Loading() {
   const { contractId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const analysisRequestedAt = (location.state as any)?.analysisRequestedAt;
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -30,6 +74,7 @@ export function Loading() {
   const [errorMessage, setErrorMessage] = useState('');
 
   const isStarted = useRef(false);
+  const staleResultMessageShown = useRef(false);
 
   const steps: Step[] = useMemo(
     () => [
@@ -47,39 +92,12 @@ export function Loading() {
     isStarted.current = true;
 
     let pollInterval: number | undefined;
-    let fakeProgressInterval: number | undefined;
-    const timers: number[] = [];
-
-    const stopFakeProgress = () => {
-      if (fakeProgressInterval) {
-        window.clearInterval(fakeProgressInterval);
-        fakeProgressInterval = undefined;
-      }
-    };
-
-    const startFakeProgress = () => {
-      if (fakeProgressInterval) return;
-
-      fakeProgressInterval = window.setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 95) return 95;
-
-          if (prev < 70) return Math.min(prev + 1, 70);
-          if (prev < 90) return Math.min(prev + 0.5, 90);
-
-          return Math.min(prev + 0.1, 95);
-        });
-      }, 1000);
-    };
 
     const stopPolling = () => {
       if (pollInterval) {
         window.clearInterval(pollInterval);
         pollInterval = undefined;
       }
-
-      stopFakeProgress();
-      timers.forEach((timer) => window.clearTimeout(timer));
     };
 
     const addBotMessage = (text: string) => {
@@ -96,46 +114,225 @@ export function Loading() {
       });
     };
 
-    const startStepTimers = () => {
-      steps.forEach((step, index) => {
-        if (index > 0 && index < steps.length - 1) {
-          const timer = window.setTimeout(() => {
-            setCurrentStep(index);
-            addBotMessage(step.message);
-          }, index * 35000);
+    const getStepFromText = (value: unknown) => {
+      const text = normalizeText(value).toLowerCase();
 
-          timers.push(timer);
-        }
-      });
+      if (!text) return null;
+      if (text.includes('완료') || text.includes('finish') || text.includes('complete')) return 4;
+      if (text.includes('정리') || text.includes('요약') || text.includes('summary') || text.includes('result')) return 4;
+      if (text.includes('위험') || text.includes('risk') || text.includes('준수') || text.includes('compliance')) return 3;
+      if (text.includes('조항') || text.includes('clause') || text.includes('분석') || text.includes('analy')) return 2;
+      if (text.includes('텍스트') || text.includes('추출') || text.includes('ocr') || text.includes('extract')) return 1;
+      if (text.includes('업로드') || text.includes('확인') || text.includes('queue') || text.includes('대기')) return 0;
+
+      return null;
+    };
+
+    const getRealProgress = (statusData: any, data: any) =>
+      toProgressNumber(
+        getFirstValue([
+          statusData?.progress,
+          statusData?.progress_percent,
+          statusData?.percentage,
+          statusData?.percent,
+          statusData?.analysis_progress,
+          statusData?.analysis?.progress,
+          statusData?.analysis?.progress_percent,
+          data?.progress,
+          data?.progress_percent,
+          data?.percentage,
+          data?.percent,
+          data?.analysis_progress,
+          data?.analysis?.progress,
+          data?.analysis?.progress_percent,
+        ]),
+      );
+
+    const getRealStep = (statusData: any, data: any) => {
+      const explicitStep = getFirstValue([
+        statusData?.step,
+        statusData?.stage,
+        statusData?.current_step,
+        statusData?.analysis_step,
+        statusData?.analysis?.step,
+        statusData?.analysis?.stage,
+        data?.step,
+        data?.stage,
+        data?.current_step,
+        data?.analysis_step,
+        data?.analysis?.step,
+        data?.analysis?.stage,
+      ]);
+
+      const numericStep = Number(explicitStep);
+      if (Number.isFinite(numericStep) && numericStep >= 0) {
+        return Math.min(steps.length - 1, Math.max(0, numericStep > 4 ? numericStep - 1 : numericStep));
+      }
+
+      return getStepFromText(explicitStep);
+    };
+
+    const getRealLogs = (statusData: any, data: any) => {
+      const rawLogs = getFirstValue([
+        statusData?.ai_logs,
+        statusData?.analysis_logs,
+        statusData?.logs,
+        statusData?.messages,
+        statusData?.events,
+        statusData?.analysis?.logs,
+        data?.ai_logs,
+        data?.analysis_logs,
+        data?.logs,
+        data?.messages,
+        data?.events,
+        data?.analysis?.logs,
+      ]);
+
+      if (!Array.isArray(rawLogs)) return [];
+
+      return rawLogs
+        .slice()
+        .sort((a, b) => getLogTime(a) - getLogTime(b))
+        .map(getLogText)
+        .filter(Boolean);
     };
 
     const pollStatus = async () => {
       if (!contractId) return;
 
       try {
+        let statusData: any = null;
+
+        try {
+          const statusResponse = await client.get(`/api/v1/contracts/${contractId}/status`);
+          statusData = statusResponse.data;
+        } catch (statusError) {
+          console.warn('상태 전용 API 조회 실패, 계약서 상세 조회로 대체합니다:', statusError);
+        }
+
         const response = await client.get(`/api/v1/contracts/${contractId}`);
         const data = response.data;
 
         const rawStatus =
+          statusData?.status ??
+          statusData?.analysis_status ??
+          statusData?.analysis?.status ??
+          statusData?.contract?.status ??
           data?.status ??
           data?.analysis_status ??
           data?.analysis?.status ??
           data?.contract?.status;
 
         const status = String(rawStatus ?? '').toLowerCase();
+        const statusFromStatusEndpoint = normalizeText(
+          statusData?.status ??
+            statusData?.analysis_status ??
+            statusData?.analysis?.status ??
+            statusData?.contract?.status,
+        ).toLowerCase();
+        const isCompletedFromStatusEndpoint =
+          statusData !== null &&
+          (statusFromStatusEndpoint === 'completed' ||
+            statusFromStatusEndpoint === 'complete' ||
+            statusFromStatusEndpoint === 'done' ||
+            statusFromStatusEndpoint === 'success' ||
+            statusFromStatusEndpoint === 'analyzed' ||
+            statusFromStatusEndpoint === 'finished' ||
+            statusFromStatusEndpoint.includes('완료'));
+        const realProgress = getRealProgress(statusData, data);
+        const realStep = getRealStep(statusData, data);
+        const realLogs = getRealLogs(statusData, data);
 
-        const isCompleted =
-          status === 'completed' ||
-          status === 'complete' ||
-          status === 'done' ||
-          status === 'success' ||
-          status === 'analyzed' ||
-          status === 'finished' ||
+        if (realProgress !== null) {
+          setProgress((prev) => Math.max(prev, realProgress));
+        }
+
+        if (realStep !== null) {
+          setCurrentStep(realStep);
+        } else if (realProgress !== null) {
+          setCurrentStep(Math.min(steps.length - 1, Math.floor(realProgress / 25)));
+        }
+
+        realLogs.forEach((log) => {
+          addBotMessage(log);
+
+          const logStep = getStepFromText(log);
+          if (logStep !== null) {
+            setCurrentStep((prev) => Math.max(prev, logStep));
+          }
+        });
+
+        const isProcessing =
+          status === 'pending' ||
+          status === 'queued' ||
+          status === 'processing' ||
+          status === 'running' ||
+          status === 'analyzing' ||
+          status === 'in_progress' ||
+          status === 'progress' ||
+          status.includes('대기') ||
+          status.includes('진행') ||
+          status.includes('분석 중');
+
+        if (isProcessing) {
+          if (realProgress === null) {
+            const inferredStep = realStep ?? getStepFromText(status);
+            if (inferredStep !== null) {
+              setCurrentStep(inferredStep);
+              setProgress((prev) => Math.max(prev, Math.min(90, 15 + inferredStep * 20)));
+            }
+          }
+
+          return;
+        }
+
+        const parseTime = (value: unknown) => {
+          if (!value) return null;
+
+          const time = new Date(String(value)).getTime();
+
+          return Number.isFinite(time) ? time : null;
+        };
+
+        const requestedTime = parseTime(analysisRequestedAt);
+        const resultTime =
+          parseTime(statusData?.analysis_completed_at) ??
+          parseTime(statusData?.analysis_updated_at) ??
+          parseTime(statusData?.analysis?.completed_at) ??
+          parseTime(statusData?.analysis?.updated_at) ??
+          parseTime(statusData?.analysis?.created_at) ??
+          parseTime(statusData?.updated_at) ??
+          parseTime(data?.analysis_completed_at) ??
+          parseTime(data?.analysis_updated_at) ??
+          parseTime(data?.analysis?.completed_at) ??
+          parseTime(data?.analysis?.updated_at) ??
+          parseTime(data?.analysis?.created_at) ??
+          parseTime(data?.updated_at) ??
+          parseTime(data?.contract?.analysis_completed_at) ??
+          parseTime(data?.contract?.updated_at);
+
+        const hasFreshResult =
+          isCompletedFromStatusEndpoint ||
+          !requestedTime ||
+          (resultTime !== null && resultTime >= requestedTime - 3000);
+
+        const hasResultPayload =
           !!data?.analysis ||
           !!data?.analysis_result ||
           !!data?.analysis_completed_at ||
           Array.isArray(data?.risk_clauses) ||
           Array.isArray(data?.risks);
+
+        const isCompleted =
+          hasFreshResult &&
+          (status === 'completed' ||
+            status === 'complete' ||
+            status === 'done' ||
+            status === 'success' ||
+            status === 'analyzed' ||
+            status === 'finished' ||
+            status.includes('완료') ||
+            (!requestedTime && hasResultPayload));
 
         if (isCompleted) {
           stopPolling();
@@ -149,6 +346,11 @@ export function Loading() {
           }, 1200);
 
           return;
+        }
+
+        if (!hasFreshResult && !staleResultMessageShown.current) {
+          staleResultMessageShown.current = true;
+          addBotMessage('이전 분석 결과가 있어 새 분석이 완료될 때까지 조금 더 기다릴게요.');
         }
 
         const isFailed =
@@ -201,8 +403,6 @@ export function Loading() {
       }
 
       setProgress(20);
-      startFakeProgress();
-      startStepTimers();
       startPolling();
     };
 
@@ -212,7 +412,7 @@ export function Loading() {
       stopPolling();
       isStarted.current = false;
     };
-  }, [contractId, navigate, steps]);
+  }, [analysisRequestedAt, contractId, navigate, steps]);
 
   return (
     <div
