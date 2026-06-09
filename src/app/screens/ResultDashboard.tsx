@@ -1327,22 +1327,14 @@ export function ResultDashboard() {
                 </div>
               )}
 
-              <div className="min-h-[78px] rounded-[14px] bg-slate-50 px-4 py-3">
-                <p className="text-center text-[11px] text-slate-500">주휴수당</p>
-                <p className="mt-1 break-words text-center text-[15px] font-semibold leading-6 text-slate-900">
-                  {weeklyHolidayPay > 0 ? (
-                    `월 ${formatWon(weeklyHolidayPay)}`
-                  ) : (
-                    <span className="text-[13px] text-slate-400">해당 없음</span>
-                  )}
-                </p>
-
-                {analysis.weeklyWorkHours && analysis.weeklyWorkHours < 15 && (
-                  <p className="mt-0.5 text-center text-[10px] text-slate-400">
-                    주 15시간 미만
+              {weeklyHolidayPay > 0 && (
+                <div className="min-h-[78px] rounded-[14px] bg-slate-50 px-4 py-3">
+                  <p className="text-center text-[11px] text-slate-500">주휴수당</p>
+                  <p className="mt-1 break-words text-center text-[15px] font-semibold leading-6 text-slate-900">
+                    월 {formatWon(weeklyHolidayPay)}
                   </p>
-                )}
-              </div>
+                </div>
+              )}
 
               {analysis.monthlyWage && (
                 <div
