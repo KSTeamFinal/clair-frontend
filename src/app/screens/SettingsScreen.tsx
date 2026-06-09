@@ -41,11 +41,9 @@ const chatSessionItems: SettingItem[] = [
 ];
 
 const contractItems: SettingItem[] = [
-  { id: 10, label: '계약서 업로드', icon: FileText, path: '/contracts/manage' },
   { id: 11, label: '계약서 목록 조회', icon: FileText, path: '/contracts/manage' },
   { id: 12, label: '계약서 상세 조회', icon: FileText, path: '/contracts/manage' },
   { id: 13, label: '계약서 삭제', icon: FileText, path: '/contracts/manage' },
-  { id: 14, label: '계약서 분석 요청', icon: FileText, path: '/contracts/manage' },
 ];
 
 function SettingRow({ item }: { item: SettingItem }) {

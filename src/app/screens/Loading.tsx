@@ -361,12 +361,13 @@ export function Loading() {
         const hasResultPayload =
           !!data?.analysis ||
           !!data?.analysis_result ||
-          !!data?.analysis_completed_at ||
+          Array.isArray(data?.clauses) ||
           Array.isArray(data?.risk_clauses) ||
           Array.isArray(data?.risks);
 
         const isCompleted =
           hasFreshResult &&
+          hasResultPayload &&
           (status === 'completed' ||
             status === 'complete' ||
             status === 'done' ||
@@ -374,7 +375,7 @@ export function Loading() {
             status === 'analyzed' ||
             status === 'finished' ||
             status.includes('완료') ||
-            (hasResultPayload && hasFreshResultTime));
+            hasFreshResultTime);
 
         if (isCompleted) {
           stopPolling();
@@ -461,6 +462,8 @@ export function Loading() {
       }, 1000);
     };
 
+    const MAX_WAIT_MS = 10 * 60 * 1000; // 10분
+
     const startLoading = () => {
       if (!contractId) {
         setErrorMessage('계약서 ID를 찾을 수 없어요.');
@@ -470,6 +473,13 @@ export function Loading() {
 
       setProgress(20);
       startPolling();
+
+      // 서버 재시작 등으로 분석이 영구 중단된 경우를 대비한 타임아웃
+      window.setTimeout(() => {
+        stopPolling();
+        setErrorMessage('분석에 너무 오랜 시간이 걸리고 있어요. 파일을 다시 업로드하거나 잠시 후 다시 시도해주세요.');
+        setShowFailModal(true);
+      }, MAX_WAIT_MS);
     };
 
     startLoading();
