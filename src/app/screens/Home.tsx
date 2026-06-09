@@ -6,7 +6,7 @@ import {
   Clock,
   ShieldCheck,
   Bell,
-  User,
+  Settings,
   ArrowRight,
 } from 'lucide-react';
 
@@ -220,7 +220,7 @@ export function Home() {
               onClick={() => navigate('/settings')}
               className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/80 text-slate-600 shadow-sm backdrop-blur sm:h-11 sm:w-11"
             >
-              <User size={18} />
+              <Settings size={18} />
             </button>
           </div>
         </header>

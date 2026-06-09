@@ -254,6 +254,36 @@ function normalizeFileNameForCompare(value: unknown) {
     .toLowerCase();
 }
 
+function hasAnalysisPayload(data: any) {
+  const source = data?.data?.contract ?? data?.contract ?? data?.data ?? data;
+  const analysisSource =
+    source?.analysis ??
+    data?.analysis ??
+    source?.analysis_result ??
+    data?.analysis_result ??
+    source?.result ??
+    data?.result;
+
+  return Boolean(
+    analysisSource ||
+      Array.isArray(source?.clauses) ||
+      Array.isArray(data?.clauses) ||
+      Array.isArray(data?.analysis_result?.clauses) ||
+      Array.isArray(data?.analysis?.clauses) ||
+      Array.isArray(data?.result?.clauses) ||
+      Array.isArray(source?.risk_clauses) ||
+      Array.isArray(source?.risks) ||
+      Array.isArray(data?.risk_clauses) ||
+      Array.isArray(data?.risks) ||
+      Array.isArray(data?.analysis_result?.risk_clauses) ||
+      Array.isArray(data?.analysis_result?.risks) ||
+      Array.isArray(data?.result?.risk_clauses) ||
+      Array.isArray(data?.result?.risks),
+  );
+}
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
 function normalizeAnalysis(data: any): AnalysisResult {
   const source = data?.data?.contract ?? data?.contract ?? data?.data ?? data;
   const analysisSource =
@@ -280,6 +310,8 @@ function normalizeAnalysis(data: any): AnalysisResult {
         'contractSignedDate',
         'signed_date',
         'signedDate',
+        'signing_date',
+        'signingDate',
         'signature_date',
         'signatureDate',
         'execution_date',
@@ -374,7 +406,6 @@ function normalizeAnalysis(data: any): AnalysisResult {
       source?.analysis_result?.compliance_results,
       source?.analysis_result?.compliance,
     ) ?? [];
-
   return {
     fileName:
       source?.original_filename ??
@@ -383,7 +414,12 @@ function normalizeAnalysis(data: any): AnalysisResult {
       source?.file_name ??
       data?.original_filename ??
       '근로계약서.pdf',
-    contractType: String(source?.contract_type ?? analysisSource?.contract_type ?? 'unknown').toLowerCase(),
+    contractType: String(
+      unwrapKeyInfoValue(keyInfo?.contract_type) ??
+        source?.contract_type ??
+        analysisSource?.contract_type ??
+        'unknown',
+    ).toLowerCase(),
     analyzedDate:
       contractSignedDate !== '-'
         ? `${contractSignedDate} 분석 완료`
@@ -631,7 +667,25 @@ export function ResultDashboard() {
           return;
         }
 
-        const response = await client.get(`/api/v1/contracts/${contractId}`);
+        let response = await client.get(`/api/v1/contracts/${contractId}`);
+
+        for (let attempt = 0; attempt < 5 && !hasAnalysisPayload(response.data); attempt += 1) {
+          setDashboardMessages([
+            {
+              role: 'bot',
+              text: '분석 결과를 불러오고 있어요. 잠시만 기다려주세요.',
+              type: 'text',
+            },
+          ]);
+
+          await wait(2000);
+          response = await client.get(`/api/v1/contracts/${contractId}`);
+        }
+
+        if (!hasAnalysisPayload(response.data)) {
+          throw new Error('분석 결과가 아직 준비되지 않았습니다.');
+        }
+
         const responseContractId = extractContractId(response.data);
 
         if (responseContractId !== null && responseContractId !== Number(contractId)) {
@@ -1199,16 +1253,6 @@ export function ResultDashboard() {
     const hasEndDate = analysis.contractEndDate !== '-';
     const hasSeparatedContractPeriod = hasStartDate || hasEndDate;
 
-    const weeklyHolidayHours =
-      analysis.weeklyWorkHours && analysis.weeklyWorkHours >= 15
-        ? (analysis.weeklyWorkHours / 40) * 8
-        : 0;
-
-    const weeklyHolidayPay =
-      analysis.hourlyWage && weeklyHolidayHours > 0
-        ? analysis.hourlyWage * weeklyHolidayHours * (365 / 12 / 7)
-        : 0;
-
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1326,23 +1370,6 @@ export function ResultDashboard() {
                   </p>
                 </div>
               )}
-
-              <div className="min-h-[78px] rounded-[14px] bg-slate-50 px-4 py-3">
-                <p className="text-center text-[11px] text-slate-500">주휴수당</p>
-                <p className="mt-1 break-words text-center text-[15px] font-semibold leading-6 text-slate-900">
-                  {weeklyHolidayPay > 0 ? (
-                    `월 ${formatWon(weeklyHolidayPay)}`
-                  ) : (
-                    <span className="text-[13px] text-slate-400">해당 없음</span>
-                  )}
-                </p>
-
-                {analysis.weeklyWorkHours && analysis.weeklyWorkHours < 15 && (
-                  <p className="mt-0.5 text-center text-[10px] text-slate-400">
-                    주 15시간 미만
-                  </p>
-                )}
-              </div>
 
               {analysis.monthlyWage && (
                 <div
@@ -1679,7 +1706,7 @@ export function ResultDashboard() {
             </span>
           </div>
 
-          <div className="ml-auto flex w-[120px] items-center justify-end gap-2 sm:w-[160px] sm:gap-3">
+          <div className="ml-auto flex w-[48px] items-center justify-end gap-2 sm:w-[160px] sm:gap-3">
             <button
               type="button"
               onClick={handleOpenShareModal}
@@ -1692,13 +1719,14 @@ export function ResultDashboard() {
             <button
               type="button"
               onClick={handleDownloadPdf}
-              className="inline-flex h-[52px] min-w-[120px] items-center justify-center gap-2 whitespace-nowrap rounded-full px-5 text-[15px] font-semibold leading-none text-white shadow-sm transition-all hover:-translate-y-0.5 sm:h-[54px] sm:min-w-[132px] sm:px-6"
+              className="inline-flex h-10 w-10 items-center justify-center gap-2 whitespace-nowrap rounded-full px-0 text-[0px] font-semibold leading-none text-white shadow-sm transition-all hover:-translate-y-0.5 sm:h-[46px] sm:w-auto sm:min-w-[112px] sm:px-5 sm:text-[14px] lg:h-[54px] lg:min-w-[132px] lg:px-6 lg:text-[15px]"
               style={{
                 background: 'linear-gradient(135deg, #667AF2 0%, #8097F8 100%)',
               }}
+              aria-label="PDF 다운로드"
             >
               <Download size={16} className="shrink-0" />
-              <span className="whitespace-nowrap">다운로드</span>
+              <span className="hidden whitespace-nowrap sm:inline">다운로드</span>
             </button>
           </div>
         </header>
