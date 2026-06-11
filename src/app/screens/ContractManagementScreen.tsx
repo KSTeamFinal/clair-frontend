@@ -6,13 +6,10 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
-  Upload,
   Search,
   Trash2,
-  BarChart3,
   Eye,
   Clock3,
-  FileUp,
   X,
 } from 'lucide-react';
 
@@ -219,17 +216,12 @@ export default function ContractManagementScreen() {
   const [search, setSearch] = useState('');
   const [showAllContracts, setShowAllContracts] = useState(false);
 
-  const [uploadOpen, setUploadOpen] = useState(true);
   const [listOpen, setListOpen] = useState(true);
   const [detailOpen, setDetailOpen] = useState(true);
   const [deleteHistoryOpen, setDeleteHistoryOpen] = useState(false);
 
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-
   const [loading, setLoading] = useState(false);
   const [loadingDeleteHistory, setLoadingDeleteHistory] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteHistoryError, setDeleteHistoryError] = useState('');
 
@@ -267,34 +259,6 @@ export default function ContractManagementScreen() {
 
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-  };
-
-  const isImageFile = (file: File) => {
-    const name = file.name.toLowerCase();
-
-    return (
-      file.type.startsWith('image/') ||
-      name.endsWith('.png') ||
-      name.endsWith('.jpg') ||
-      name.endsWith('.jpeg') ||
-      name.endsWith('.webp')
-    );
-  };
-
-  const isAllowedUploadFile = (file: File) => {
-    const name = file.name.toLowerCase();
-
-    return (
-      file.type === 'application/pdf' ||
-      file.type === 'text/plain' ||
-      file.type.startsWith('image/') ||
-      name.endsWith('.pdf') ||
-      name.endsWith('.txt') ||
-      name.endsWith('.png') ||
-      name.endsWith('.jpg') ||
-      name.endsWith('.jpeg') ||
-      name.endsWith('.webp')
-    );
   };
 
   const normalizeStatus = (status?: string): ContractStatus => {
@@ -384,41 +348,6 @@ export default function ContractManagementScreen() {
     if (Array.isArray(data.deletedContracts)) return data.deletedContracts;
     if (Array.isArray(data.history)) return data.history;
     return extractContractArray(data);
-  };
-
-  const extractUploadedContractId = (data: any): number | null => {
-    const rawId =
-      data?.contract_id ??
-      data?.contractId ??
-      data?.contract?.contract_id ??
-      data?.contract?.contractId ??
-      data?.contract?.id ??
-      data?.data?.contract_id ??
-      data?.data?.contractId ??
-      data?.data?.contract?.contract_id ??
-      data?.data?.contract?.contractId ??
-      data?.data?.contract?.id ??
-      data?.data?.id ??
-      data?.id;
-
-    const id = Number(rawId);
-    return Number.isFinite(id) && id > 0 ? id : null;
-  };
-
-  const requestAnalysis = async (contractId: number) => {
-    try {
-      return await client.post(`/api/v1/contracts/${contractId}/analyze`, null, {
-        params: { force: true },
-      });
-    } catch (error: any) {
-      if (![404, 405, 422].includes(error?.response?.status)) {
-        throw error;
-      }
-
-      return client.post(`/api/v1/contracts/${contractId}/request-analysis`, null, {
-        params: { force: true },
-      });
-    }
   };
 
   const fetchContracts = useCallback(
@@ -534,107 +463,6 @@ export default function ContractManagementScreen() {
     visibleContracts[0] ??
     null;
 
-  const handleSelectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (files.length === 0) return;
-
-    const maxSize = 10 * 1024 * 1024;
-
-    const validFiles = files.filter((file) => {
-      return isAllowedUploadFile(file) && file.size <= maxSize;
-    });
-
-    if (validFiles.length !== files.length) {
-      setUploadErrorMessage(
-        'PDF, TXT, 이미지 파일만 업로드할 수 있고, 각 파일은 10MB 이하만 가능해요.'
-      );
-      setShowUploadErrorModal(true);
-    }
-
-    setSelectedFiles((prev) => {
-      const merged = [...prev];
-
-      validFiles.forEach((file) => {
-        const alreadyExists = merged.some(
-          (item) =>
-            item.name === file.name &&
-            item.size === file.size &&
-            item.lastModified === file.lastModified
-        );
-
-        if (!alreadyExists) {
-          merged.push(file);
-        }
-      });
-
-      return merged;
-    });
-
-    e.target.value = '';
-  };
-
-  const handleRemoveSelectedFile = (index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index));
-  };
-
-  const handleUpload = async () => {
-    if (selectedFiles.length === 0) return;
-
-    try {
-      setUploading(true);
-
-      const imageFiles = selectedFiles.filter(isImageFile);
-      const documentFiles = selectedFiles.filter((file) => !isImageFile(file));
-      let uploadedContractId: number | null = null;
-
-      for (const file of documentFiles) {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await client.post('/api/v1/contracts/upload', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
-
-        uploadedContractId = extractUploadedContractId(response.data) ?? uploadedContractId;
-      }
-
-      if (imageFiles.length > 0) {
-        const imageFormData = new FormData();
-
-        imageFiles.forEach((file) => {
-          imageFormData.append('files', file);
-        });
-
-        const response = await client.post('/api/v1/contracts/upload-images', imageFormData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
-
-        uploadedContractId = extractUploadedContractId(response.data) ?? uploadedContractId;
-      }
-
-      setSearch('');
-
-      await fetchContracts(uploadedContractId, false);
-
-      setSelectedFiles([]);
-      setUploadOpen(true);
-      setListOpen(true);
-      setDetailOpen(true);
-      setShowAllContracts(false);
-    } catch {
-      setUploadErrorMessage(
-        '파일 업로드에 실패했어요. 파일 형식, 용량 또는 백엔드 업로드 필드명을 확인해주세요.'
-      );
-      setShowUploadErrorModal(true);
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const handleOpenDeleteModal = (contractId: number) => {
     setDeleteTargetId(contractId);
     setShowDeleteModal(true);
@@ -688,36 +516,6 @@ export default function ContractManagementScreen() {
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!selectedContract || selectedContract.status === '삭제됨') return;
-
-    try {
-      setAnalyzing(true);
-
-      const analysisRequestedAt = new Date().toISOString();
-      await requestAnalysis(selectedContract.id);
-
-      navigate(`/loading/${selectedContract.id}`, {
-        state: {
-          analysisRequestedAt,
-          expectedFileName: selectedContract.fileName,
-          requireFreshAnalysis: true,
-        },
-      });
-    } catch (error: any) {
-      const detail = error?.response?.data?.detail || error?.response?.data?.message;
-
-      setUploadErrorMessage(
-        detail
-          ? `분석 요청에 실패했어요: ${detail}`
-          : '분석 요청에 실패했어요. 잠시 후 다시 시도해주세요.'
-      );
-      setShowUploadErrorModal(true);
-    } finally {
-      setAnalyzing(false);
-    }
-  };
-
   return (
     <div
       className="min-h-screen"
@@ -762,116 +560,12 @@ export default function ContractManagementScreen() {
                 </div>
 
                 <p className="mt-2 max-w-[620px] text-[11px] leading-5 text-slate-500 sm:text-[12px] md:text-[13px]">
-                  계약서 업로드, 목록 조회, 삭제 이력 조회, 상세 조회, 삭제, 분석 요청을 한 화면에서 관리할 수 있어요.
+                  계약서 목록 조회, 삭제 이력 조회, 상세 조회, 삭제를 한 화면에서 관리할 수 있어요.
                 </p>
               </div>
             </section>
 
             <div className="mt-3.5 grid gap-3.5 sm:mt-4 sm:gap-4">
-              <SectionCard
-                title="계약서 업로드"
-                subtitle="PDF, TXT, 이미지 파일 업로드"
-                open={uploadOpen}
-                onToggle={() => setUploadOpen((prev) => !prev)}
-              >
-                <div className="mx-auto w-full max-w-[900px] rounded-[14px] border border-dashed border-[#D7E1FB] bg-[#F8FAFF] p-2.5 sm:p-3 md:p-3.5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white sm:h-10 sm:w-10">
-                        <Upload className="h-4 w-4 text-[#6C80DD] sm:h-5 sm:w-5" />
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="text-[12px] font-semibold text-slate-900 sm:text-[14px]">
-                          새 계약서 업로드
-                        </p>
-                        <p className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-[12px]">
-                          PDF, TXT, 이미지 파일을 여러 개 선택해서 업로드할 수 있어요.
-                        </p>
-                      </div>
-                    </div>
-
-                    <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#5B72D6] bg-[#6C80DD] px-3 text-[11px] font-semibold text-white shadow-md transition hover:opacity-90 sm:h-11 sm:w-auto sm:px-4 sm:text-[12px]">
-                      <FileUp className="h-4 w-4" />
-                      파일 선택
-                      <input
-                        type="file"
-                        multiple
-                        accept=".pdf,.txt,.png,.jpg,.jpeg,.webp,image/*,text/plain,application/pdf"
-                        className="hidden"
-                        onChange={handleSelectFile}
-                      />
-                    </label>
-                  </div>
-
-                  <div className="mt-3 rounded-xl bg-white p-3">
-                    <p className="text-[10px] text-slate-400">선택된 파일</p>
-
-                    <div className="mt-2 space-y-1.5">
-                      {selectedFiles.length > 0 ? (
-                        selectedFiles.map((file, index) => (
-                          <div
-                            key={`${file.name}-${file.size}-${file.lastModified}`}
-                            className="flex items-center justify-between gap-2 rounded-lg bg-[#F8FAFF] px-3 py-2"
-                          >
-                            <div className="min-w-0">
-                              <p className="break-all text-[12px] font-medium text-slate-700">
-                                {file.name}
-                              </p>
-                              <p className="mt-0.5 text-[10px] text-slate-400">
-                                {formatFileSize(file.size)}
-                              </p>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveSelectedFile(index)}
-                              className="shrink-0 text-[11px] font-medium text-slate-400 transition hover:text-rose-500"
-                            >
-                              삭제
-                            </button>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-[12px] font-medium text-slate-700">
-                          아직 선택된 파일이 없어요.
-                        </p>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleUpload}
-                      disabled={selectedFiles.length === 0 || uploading}
-                      className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#6C80DD] px-4 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-                    >
-                      {uploading ? '업로드 중...' : '업로드 실행'}
-                    </button>
-                  </div>
-
-                  <div className="mt-4 border-t border-[#E8EEFF] pt-4">
-                    {selectedContract && (
-                      <p className="mb-3 truncate text-[11px] text-slate-400 sm:text-[12px]">
-                        선택된 계약서: <span className="font-medium text-slate-600">{selectedContract.title}</span>
-                      </p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleAnalyze}
-                      disabled={analyzing || !selectedContract}
-                      className="inline-flex min-h-[54px] w-full items-center justify-center gap-2.5 rounded-[16px] px-5 py-4 text-[15px] font-bold text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 sm:min-h-[58px] sm:text-[16px]"
-                      style={{
-                        backgroundColor: analyzing ? '#AAB6E8' : '#6C80DD',
-                        boxShadow: selectedContract ? '0 14px 30px rgba(108, 128, 221, 0.30)' : 'none',
-                      }}
-                    >
-                      <BarChart3 className="h-5 w-5" />
-                      {analyzing ? '분석 요청 중...' : 'AI 분석 시작'}
-                    </button>
-                  </div>
-                </div>
-              </SectionCard>
-
               <div className="mx-auto grid w-full max-w-[920px] gap-3 lg:grid-cols-[0.92fr_1.08fr] lg:gap-4">
                 <SectionCard
                   title="계약서 목록 조회"
