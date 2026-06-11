@@ -28,6 +28,7 @@ export default function ProfileScreen() {
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('프로필 정보가 저장되었습니다');
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingProfileImage, setIsSavingProfileImage] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [savedProfileImage, setSavedProfileImage] = useState<string | null>(null);
@@ -182,6 +183,54 @@ export default function ProfileScreen() {
     });
   };
 
+  const handleSaveProfileImage = async () => {
+    if (isSavingProfileImage) return;
+
+    if (!selectedProfileFile && !profileImageDeleted) {
+      showToast('저장할 프로필 사진 변경사항이 없습니다.');
+      return;
+    }
+
+    try {
+      setIsSavingProfileImage(true);
+
+      if (selectedProfileFile) {
+        const response = await uploadProfileImage(selectedProfileFile);
+        const serverImage =
+          response.data?.profile_image ||
+          response.data?.profileImage ||
+          response.data?.url ||
+          response.data?.image_url;
+
+        if (serverImage) {
+          setProfileImage(serverImage);
+          setSavedProfileImage(serverImage);
+          localStorage.setItem('profileImage', serverImage);
+        } else if (profileImage) {
+          localStorage.setItem('profileImage', profileImage);
+          setSavedProfileImage(profileImage);
+        }
+      } else if (profileImageDeleted) {
+        await client.delete('/api/v1/auth/me/profile-image');
+        setProfileImage(null);
+        setSavedProfileImage(null);
+        localStorage.removeItem('profileImage');
+      }
+
+      setSelectedProfileFile(null);
+      setProfileImageDeleted(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      showToast('프로필 사진이 저장되었습니다');
+    } catch (error: any) {
+      console.error('프로필 사진 저장 실패:', error);
+      showToast(getErrorMessage(error, '프로필 사진 저장에 실패했습니다.'));
+    } finally {
+      setIsSavingProfileImage(false);
+    }
+  };
+
   const handleSave = async () => {
     if (isSaving) return;
 
@@ -227,31 +276,6 @@ export default function ProfileScreen() {
         });
       }
 
-      if (selectedProfileFile) {
-        const response = await uploadProfileImage(selectedProfileFile);
-        const serverImage =
-          response.data?.profile_image ||
-          response.data?.profileImage ||
-          response.data?.url ||
-          response.data?.image_url;
-
-        if (serverImage) {
-          setProfileImage(serverImage);
-          setSavedProfileImage(serverImage);
-          localStorage.setItem('profileImage', serverImage);
-        } else if (profileImage) {
-          localStorage.setItem('profileImage', profileImage);
-          setSavedProfileImage(profileImage);
-        }
-      } else if (profileImageDeleted) {
-        await client.delete('/api/v1/auth/me/profile-image');
-        setSavedProfileImage(null);
-        localStorage.removeItem('profileImage');
-      } else if (profileImage) {
-        localStorage.setItem('profileImage', profileImage);
-        setSavedProfileImage(profileImage);
-      }
-
       const nextUser = {
         ...user,
         name: nextName,
@@ -263,8 +287,6 @@ export default function ProfileScreen() {
       setCurrentPassword('');
       setNewPasswordConfirm('');
       syncStoredUserInfo(nextName);
-      setSelectedProfileFile(null);
-      setProfileImageDeleted(false);
       setIsEdit(false);
       showToast('프로필 정보가 저장되었습니다');
     } catch (error: any) {
@@ -319,6 +341,7 @@ export default function ProfileScreen() {
   };
 
   const displayInitial = user.name ? user.name.charAt(0) : 'U';
+  const hasProfileImageChange = Boolean(selectedProfileFile || profileImageDeleted);
 
   return (
     <div
@@ -413,7 +436,7 @@ export default function ProfileScreen() {
                   </p>
 
                   {isEdit && (
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-2 flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
@@ -431,6 +454,15 @@ export default function ProfileScreen() {
                           기본 이미지
                         </button>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={handleSaveProfileImage}
+                        disabled={!hasProfileImageChange || isSavingProfileImage}
+                        className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[10px] font-medium text-[#4C63D2] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                      >
+                        {isSavingProfileImage ? '사진 저장 중' : '사진 저장'}
+                      </button>
                     </div>
                   )}
                 </div>
