@@ -14,21 +14,33 @@ CLAIR 프론트엔드는 계약서 업로드, AI 분석 결과 확인, 공유 �
 
 ## Preview
 
-| 랜딩 | 홈 |
+| 랜딩 | 로그인 |
 | --- | --- |
-| ![랜딩](docs/screenshots/01_landing.png) | ![홈](docs/screenshots/03_home.png) |
+| ![랜딩](docs/screenshots/01_landing.png) | ![로그인](docs/screenshots/02_login.png) |
 
-| 업로드 | 분석 결과 |
+| 회원가입 | 온보딩 |
 | --- | --- |
-| ![업로드](docs/screenshots/04_upload.png) | ![분석 결과](docs/screenshots/06_result_full.png) |
+| ![회원가입](docs/screenshots/03_signup.png) | ![온보딩](docs/screenshots/04_onboarding.png) |
 
-| Q&A 채팅 | 계약서 관리 |
+| 홈 | 업로드 |
 | --- | --- |
-| ![채팅](docs/screenshots/10_chat_session.png) | ![관리](docs/screenshots/05_contracts_manage.png) |
+| ![홈](docs/screenshots/05_home.png) | ![업로드](docs/screenshots/06_upload.png) |
 
-| 알림 | 설정 |
+| 계약서 관리 | 분석 결과 |
 | --- | --- |
-| ![알림](docs/screenshots/12_notifications.png) | ![설정](docs/screenshots/13_settings.png) |
+| ![계약서 관리](docs/screenshots/07_contracts_manage.png) | ![분석 결과](docs/screenshots/08_result_full.png) |
+
+| 채팅 세션 관리 | 알림 |
+| --- | --- |
+| ![채팅 세션 관리](docs/screenshots/09_chat_session.png) | ![알림](docs/screenshots/10_notifications.png) |
+
+| 프로필 | 설정 |
+| --- | --- |
+| ![프로필](docs/screenshots/11_profile.png) | ![설정](docs/screenshots/12_settings.png) |
+
+| 로딩 | 공유 |
+| --- | --- |
+| ![로딩](docs/screenshots/13_loading.png) | ![공유](docs/screenshots/14_share.png) |
 
 ## Getting Started
 
